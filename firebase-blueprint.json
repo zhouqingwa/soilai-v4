@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user profile in the system.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "photoUrl": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "plantsScanned": { "type": "number" },
+        "plantsSaved": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "plantsScanned", "plantsSaved", "createdAt"]
+    },
+    "Article": {
+      "title": "Article",
+      "description": "A journal article about plant care.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "excerpt", "content", "imageUrl", "authorId", "createdAt"]
+    },
+    "Scan": {
+      "title": "Scan",
+      "description": "A plant diagnosis scan record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "species": { "type": "string" },
+        "risk": { "type": "string" },
+        "summary": { "type": "string" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "imageData": { "type": "string" },
+        "imageType": { "type": "string" },
+        "particleImageData": { "type": "string" },
+        "particleImageType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "species", "risk", "summary", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/articles/{articleId}": {
+      "schema": { "$ref": "#/entities/Article" },
+      "description": "Stores journal articles."
+    },
+    "/scans/{scanId}": {
+      "schema": { "$ref": "#/entities/Scan" },
+      "description": "Stores plant scans."
+    }
+  }
+}
