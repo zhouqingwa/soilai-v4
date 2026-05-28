@@ -1,0 +1,20 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Leggy Growth plant care illustration</title>
+  <desc id="desc">A SoilAI journal cover illustration for leggy growth.</desc>
+  <rect width="1200" height="720" fill="#f8f4e8"/>
+  <circle cx="1020" cy="100" r="210" fill="#8aa96c" opacity="0.14"/>
+  <circle cx="160" cy="620" r="250" fill="#173126" opacity="0.06"/>
+  <path d="M80 584 C280 510 408 612 590 548 C760 488 870 520 1120 430" fill="none" stroke="#173126" stroke-width="2" opacity="0.12"/>
+  <g>
+  <path d="M430 502 H770 L724 644 H476 Z" fill="#b88b62" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M410 484 H790" stroke="#173126" stroke-width="18" stroke-linecap="round"/>
+  <path d="M492 572 H708" stroke="#173126" stroke-width="8" opacity="0.16" stroke-linecap="round"/><path d="M600 520 C590 430 610 328 596 218 C588 152 636 120 704 104" stroke="#173126" stroke-width="15" fill="none" stroke-linecap="round"/>
+  <g transform="translate(704 104) rotate(10) scale(0.76)">
+    <path d="M0,-86 C62,-66 92,-12 70,36 C46,88 -24,96 -72,46 C-116,0 -80,-62 0,-86Z" fill="#8aa96c" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M-48,44 C-12,10 24,-26 58,-58" fill="none" stroke="#f8f4e8" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+  </g>
+  <g transform="translate(548 354) rotate(-42) scale(0.58)">
+    <path d="M0,-86 C62,-66 92,-12 70,36 C46,88 -24,96 -72,46 C-116,0 -80,-62 0,-86Z" fill="#6d8d60" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M-48,44 C-12,10 24,-26 58,-58" fill="none" stroke="#f8f4e8" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+  </g><circle cx="808" cy="132" r="46" fill="#d6b44c" stroke="#173126" stroke-width="8"/></g>
+</svg>

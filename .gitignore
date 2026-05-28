@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+update_*.js
+src/package-lock.json

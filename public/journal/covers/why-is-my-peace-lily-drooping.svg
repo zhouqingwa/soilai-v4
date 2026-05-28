@@ -1,0 +1,20 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Peace Lily Droop plant care illustration</title>
+  <desc id="desc">A SoilAI journal cover illustration for peace lily droop.</desc>
+  <rect width="1200" height="720" fill="#f8f4e8"/>
+  <circle cx="1020" cy="100" r="210" fill="#829a70" opacity="0.14"/>
+  <circle cx="160" cy="620" r="250" fill="#173126" opacity="0.06"/>
+  <path d="M80 584 C280 510 408 612 590 548 C760 488 870 520 1120 430" fill="none" stroke="#173126" stroke-width="2" opacity="0.12"/>
+  <g>
+  <path d="M430 498 H770 L724 640 H476 Z" fill="#b88b62" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M410 480 H790" stroke="#173126" stroke-width="18" stroke-linecap="round"/>
+  <path d="M492 568 H708" stroke="#173126" stroke-width="8" opacity="0.16" stroke-linecap="round"/><path d="M600 512 C590 420 620 326 596 230" stroke="#173126" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <g transform="translate(496 358) rotate(150) scale(0.88)">
+    <path d="M0,-86 C62,-66 92,-12 70,36 C46,88 -24,96 -72,46 C-116,0 -80,-62 0,-86Z" fill="#829a70" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M-48,44 C-12,10 24,-26 58,-58" fill="none" stroke="#f8f4e8" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+  </g>
+  <g transform="translate(704 358) rotate(30) scale(0.88)">
+    <path d="M0,-86 C62,-66 92,-12 70,36 C46,88 -24,96 -72,46 C-116,0 -80,-62 0,-86Z" fill="#6f8d62" stroke="#173126" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M-48,44 C-12,10 24,-26 58,-58" fill="none" stroke="#f8f4e8" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+  </g><path d="M622 250 C704 198 752 270 680 338 C626 302 598 286 622 250Z" fill="#f8f4e8" stroke="#173126" stroke-width="10"/></g>
+</svg>

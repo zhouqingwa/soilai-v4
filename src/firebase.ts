@@ -11,6 +11,40 @@ export const db = initializeFirestore(app, {
 }, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+const getAuthErrorMessage = (error: any) => {
+  const code = error?.code;
+
+  if (code === 'auth/unauthorized-domain') {
+    return [
+      'This domain is not authorized for Google sign-in.',
+      'In Firebase Console > Authentication > Settings > Authorized domains, add: 127.0.0.1, localhost, soilai.app, www.soilai.app, login.soilai.app, and your Vercel domain.'
+    ].join(' ');
+  }
+
+  if (code === 'auth/operation-not-allowed') {
+    return 'Google sign-in is not enabled. In Firebase Console > Authentication > Sign-in method, enable Google provider.';
+  }
+
+  if (code === 'auth/popup-blocked') {
+    return 'The Google sign-in popup was blocked. Open this site directly in Chrome or Edge, then allow popups for 127.0.0.1.';
+  }
+
+  if (code === 'auth/popup-closed-by-user') {
+    return 'The Google sign-in window was closed before finishing. Try again and complete the Google account step.';
+  }
+
+  if (code === 'auth/cancelled-popup-request') {
+    return 'Another Google sign-in window was already open. Close the extra window and try again.';
+  }
+
+  if (code === 'auth/invalid-api-key' || code === 'auth/configuration-not-found') {
+    return 'Firebase sign-in configuration is invalid. Check the Firebase API key, auth domain, and project configuration.';
+  }
+
+  return error?.message || 'Google sign-in failed. Please try again.';
+};
 
 export const signInWithGoogle = async () => {
   try {
@@ -18,24 +52,21 @@ export const signInWithGoogle = async () => {
     return result.user;
   } catch (error: any) {
     if (error.code === 'auth/popup-blocked') {
-      console.warn("Popup blocked. Attempting redirect or opening in new tab...");
+      console.warn("Popup blocked. Attempting redirect sign-in...");
       if (window !== window.parent) {
-         alert("因为在预览窗口（iframe）中运行，浏览器的弹窗拦截直接阻止了 Google 登录窗口。请点击预览区右上角的 ↗ 图标（在新标签页中打开），然后在新窗口中重试登录。");
+        alert("Sign-in popup was blocked. If sign-in does not work in this preview, open the app directly in Chrome or Edge.");
       }
       try {
         await signInWithRedirect(auth, googleProvider);
       } catch (redirectErr) {
         console.warn("Redirect sign-in also failed:", redirectErr);
+        throw new Error(getAuthErrorMessage(redirectErr));
       }
       return null;
     }
-    if (error.code === 'auth/unauthorized-domain') {
-       const currentDomain = window.location.hostname;
-       alert(`Google 登录失败：当前域名 ${currentDomain} 未被授权。\n\n请前往 Firebase 控制台 (console.firebase.google.com) \n-> 左侧 Authentication \n-> 顶部 Settings \n-> 左侧 Authorized domains，点击 Add domain 将上述域名添加到白名单。`);
-    }
+
     console.error("Error signing in with Google", error);
-    alert(`登录出错啦：${error.message || error.code}`);
-    throw error;
+    throw new Error(getAuthErrorMessage(error));
   }
 };
 

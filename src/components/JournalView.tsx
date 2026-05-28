@@ -41,11 +41,6 @@ const getArticleDate = (article: Article, field: 'publishedAt' | 'updatedAt' = '
   return new Date(value.seconds * 1000).toISOString();
 };
 
-const handleImageError = (event: SyntheticEvent<HTMLImageElement>) => {
-  event.currentTarget.onerror = null;
-  event.currentTarget.src = DEFAULT_OG_IMAGE;
-};
-
 const iconMap: Record<JournalIconKey, typeof BookOpen> = {
   book: BookOpen,
   leaf: Leaf,
@@ -53,6 +48,144 @@ const iconMap: Record<JournalIconKey, typeof BookOpen> = {
   bug: Bug,
   sprout: Sprout,
   sun: Sun,
+};
+
+const handleImageError = (event: SyntheticEvent<HTMLImageElement>) => {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = DEFAULT_OG_IMAGE;
+};
+
+const isPhotoCover = (article: Article) => /\.(png|jpe?g|webp|avif)$/i.test(getArticleCover(article));
+
+const getVisualIconKey = (article: Article): JournalIconKey => {
+  const haystack = [article.category, article.title, article.excerpt, ...article.tags, ...(article.keywords || [])]
+    .join(' ')
+    .toLowerCase();
+
+  if (haystack.includes('water') || haystack.includes('root rot') || haystack.includes('droop') || haystack.includes('wilt')) return 'droplets';
+  if (haystack.includes('gnat') || haystack.includes('mite') || haystack.includes('pest') || haystack.includes('mold')) return 'bug';
+  if (haystack.includes('soil') || haystack.includes('root')) return 'sprout';
+  if (haystack.includes('light') || haystack.includes('leggy') || haystack.includes('split')) return 'sun';
+  return 'leaf';
+};
+
+const getPrimarySignal = (article: Article) => {
+  const tag = article.tags.find(item => item.length <= 24) || article.category || 'Plant care';
+  return tag.replace(/\b\w/g, char => char.toUpperCase());
+};
+
+const JournalVisual = ({ article, compact = false, mini = false, hero = false }: { article: Article; compact?: boolean; mini?: boolean; hero?: boolean }) => {
+  const Icon = iconMap[getVisualIconKey(article)];
+  const primarySignal = getPrimarySignal(article);
+  const tags = article.tags.slice(0, mini ? 1 : 3);
+
+  if (mini) {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#f5f1e7]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(125,143,105,0.28),transparent_38%),radial-gradient(circle_at_80%_88%,rgba(45,58,45,0.16),transparent_42%)]" />
+        <Icon className="relative h-9 w-9 text-[#2d3a2d]" strokeWidth={1.5} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative w-full overflow-hidden ${
+      hero
+        ? 'h-full border-0'
+        : compact
+          ? 'aspect-[16/7] rounded-[1.2rem] mb-5 border border-[#7d8f69]/18'
+          : 'aspect-[16/8] rounded-[1.5rem] mb-6 border border-[#7d8f69]/18'
+    } bg-[#f7f2e8]`}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(125,143,105,0.32),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(45,58,45,0.14),transparent_35%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(241,243,238,0.3))]" />
+      <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full border border-[#2d3a2d]/10 bg-white/32" />
+      <div className="absolute -bottom-20 -left-16 h-48 w-48 rounded-full bg-[#7d8f69]/12" />
+      <div className="absolute bottom-0 right-0 h-28 w-36 rounded-tl-[5rem] bg-[#2d3a2d]/8" />
+
+      <div className={`relative flex h-full flex-col justify-between ${hero ? 'p-8 md:p-12' : compact ? 'p-5' : 'p-6'}`}>
+        <div className="flex items-start justify-between gap-4">
+          <span className="rounded-full border border-white/70 bg-white/82 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d3a2d] shadow-sm backdrop-blur-md">
+            {article.category || 'Guide'}
+          </span>
+          <div className={`${hero ? 'h-16 w-16' : compact ? 'h-11 w-11' : 'h-14 w-14'} flex items-center justify-center rounded-full bg-[#2d3a2d] text-white shadow-[0_14px_34px_rgba(45,58,45,0.22)]`}>
+            <Icon className={`${hero ? 'h-7 w-7' : compact ? 'h-5 w-5' : 'h-6 w-6'}`} strokeWidth={1.6} />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[#2d3a2d]/18" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#7d8f69]">SoilAI Notes</span>
+          </div>
+          <p className={`${hero ? 'text-5xl md:text-7xl' : compact ? 'text-xl' : 'text-3xl'} font-serif leading-none text-[#2d3a2d]`}>
+            {primarySignal}
+          </p>
+          {!compact && !hero && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {tags.map(tag => (
+                <span key={tag} className="rounded-full bg-white/62 px-3 py-1 text-[11px] font-semibold text-[#2d3a2d]/70">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ArticleCover = ({ article, compact = false, mini = false, hero = false }: { article: Article; compact?: boolean; mini?: boolean; hero?: boolean }) => {
+  const cover = getArticleCover(article);
+
+  if (!isPhotoCover(article)) {
+    return <JournalVisual article={article} compact={compact} mini={mini} hero={hero} />;
+  }
+
+  if (mini) {
+    return (
+      <img
+        src={cover}
+        alt={getArticleCoverAlt(article)}
+        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+        loading="lazy"
+        onError={handleImageError}
+      />
+    );
+  }
+
+  return (
+    <div className={`relative w-full overflow-hidden ${
+      hero
+        ? 'h-full'
+        : compact
+          ? 'aspect-[16/7] rounded-[1.2rem] mb-5'
+          : 'aspect-[16/8] rounded-[1.5rem] mb-6'
+    } bg-[#f1f3ee]`}>
+      <img
+        src={cover}
+        alt={getArticleCoverAlt(article)}
+        loading={hero ? 'eager' : 'lazy'}
+        className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
+        onError={handleImageError}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#17261e]/45 via-transparent to-white/8" />
+      {!hero && (
+        <>
+          <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d3a2d] shadow-sm backdrop-blur-md">
+            {article.category || 'Guide'}
+          </div>
+          <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-4">
+            <p className={`${compact ? 'text-lg' : 'text-2xl'} max-w-[70%] font-serif leading-none text-white drop-shadow-sm`}>
+              {getPrimarySignal(article)}
+            </p>
+            <span className="rounded-full bg-white/88 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d3a2d] shadow-sm backdrop-blur-md">
+              SoilAI
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
 };
 
 const ArticleCard = ({ article, index, compact = false }: { article: Article; index: number; compact?: boolean }) => (
@@ -67,19 +200,7 @@ const ArticleCard = ({ article, index, compact = false }: { article: Article; in
       transition={{ duration: 0.5, delay: 0.05 * Math.min(index + 1, 6), ease: [0.16, 1, 0.3, 1] }}
       className="flex h-full flex-col rounded-[2rem] border border-[#7d8f69]/20 bg-white/70 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-sm transition-all duration-500 hover:-translate-y-1.5 hover:border-[#7d8f69]/40 hover:bg-white hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)]"
     >
-      <div className={`relative w-full overflow-hidden ${compact ? 'aspect-[5/3] rounded-[1.2rem] mb-5' : 'aspect-[4/3] rounded-[1.5rem] mb-6'} bg-[#f1f3ee]`}>
-        <img
-          src={getArticleCover(article)}
-          alt={getArticleCoverAlt(article)}
-          loading="lazy"
-          className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
-          onError={handleImageError}
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#2d3a2d] shadow-sm backdrop-blur-md">
-          {article.category || 'Guide'}
-        </div>
-      </div>
+      <ArticleCover article={article} compact={compact} />
       <div className="flex flex-col flex-1 px-2">
         <div className="flex items-center gap-3 mb-3">
           <span className="text-[11px] font-semibold uppercase tracking-widest text-[#7d8f69]">
@@ -437,7 +558,7 @@ export default function JournalView() {
       {/* Article Detail Modal */}
       <AnimatePresence>
         {selectedArticle && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -472,7 +593,7 @@ export default function JournalView() {
                 <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>
               )}
             </Helmet>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 50, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -480,7 +601,7 @@ export default function JournalView() {
               className="bg-white w-full max-w-4xl min-h-[80vh] rounded-[2rem] shadow-2xl overflow-hidden relative my-auto border border-[#7d8f69]/10"
               onClick={(e) => e.stopPropagation()}
             >
-              <button 
+              <button
                 onClick={closeArticle}
                 className="absolute top-6 right-6 z-10 w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-[#2d3a2d] hover:bg-white hover:scale-105 hover:shadow-lg transition-all border border-white/20"
                 aria-label="Close article"
@@ -488,15 +609,9 @@ export default function JournalView() {
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="h-72 md:h-[28rem] w-full relative bg-[#f1f3ee]">
-                <img 
-                  src={getArticleCover(selectedArticle)}
-                  alt={getArticleCoverAlt(selectedArticle)}
-                  className="w-full h-full object-cover"
-                  onError={handleImageError}
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+              <div className="h-72 md:h-[28rem] w-full relative bg-[#f7f2e8] overflow-hidden">
+                <ArticleCover article={selectedArticle} hero />
+                <div className="absolute inset-0 bg-gradient-to-t from-white/78 via-white/12 to-transparent" />
               </div>
 
               <div className="p-8 md:p-16 max-w-3xl mx-auto -mt-24 relative bg-white rounded-t-[2.5rem] shadow-sm">
@@ -518,7 +633,7 @@ export default function JournalView() {
                   <p className="text-xl md:text-2xl font-light text-[#2d3a2d]/90 leading-relaxed mb-12 italic border-l-4 border-[#7d8f69]/20 pl-6">
                     {selectedArticle.excerpt}
                   </p>
-                  
+
                   {/* Placeholder Content */}
                   {selectedArticle.content ? (
                     <Markdown>{selectedArticle.content}</Markdown>
@@ -533,20 +648,14 @@ export default function JournalView() {
                       <h3 className="text-3xl font-light text-[#2d3a2d] mb-10">Related Guides</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {articles.filter(a => a.id !== selectedArticle.id && a.category === selectedArticle.category).slice(0, 2).map((article, idx) => (
-                          <Link 
-                            key={article.id} 
+                          <Link
+                            key={article.id}
                             to={article.slug ? `/journal/${article.slug}` : `/journal/${article.id}`}
                             className="group block"
                           >
                             <div className="flex gap-5 items-center p-3 rounded-2xl transition duration-300 hover:bg-[#f1f3ee]">
                               <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-stone-200">
-                                <img 
-                                  src={getArticleCover(article)}
-                                  alt={getArticleCoverAlt(article)}
-                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                  loading="lazy"
-                                  onError={handleImageError}
-                                />
+                                <ArticleCover article={article} mini />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <h4 className="text-lg font-medium text-[#2d3a2d] line-clamp-2 leading-tight group-hover:text-[#7d8f69] transition-colors mb-2">

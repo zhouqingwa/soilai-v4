@@ -58,7 +58,7 @@ interface FirestoreErrorInfo {
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMsg = error instanceof Error ? error.message : String(error);
-  
+
   if (errorMsg.includes('Quota') || errorMsg.includes('resource-exhausted')) {
     console.warn(`Firestore Quota Exceeded on ${operationType} ${path}`);
     return; // Swallow quota errors so they don't flood the UI or logs
@@ -148,10 +148,10 @@ export default function App() {
   const previousPathnameRef = useRef(location.pathname);
 
   useEffect(() => {
-    const isJournalInternalChange = 
-      location.pathname.startsWith('/journal') && 
+    const isJournalInternalChange =
+      location.pathname.startsWith('/journal') &&
       previousPathnameRef.current.startsWith('/journal');
-      
+
     previousPathnameRef.current = location.pathname;
 
     // Scroll to top on route change, unless navigating within journal
@@ -210,14 +210,14 @@ export default function App() {
       setIsGardenLoading(false);
       return;
     }
-    
+
     // Set up a real-time listener for the user's garden scans
     const q = query(
       collection(db, 'scans'),
       where('userId', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
-    
+
     const unsubscribeScans = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setGardenScans(data);
@@ -235,7 +235,7 @@ export default function App() {
         setIsGardenLoading(false);
       }
     });
-    
+
     return () => unsubscribeScans();
   }, [user]);
 
@@ -261,7 +261,7 @@ export default function App() {
             };
             if (currentUser.displayName) newProfile.name = currentUser.displayName;
             if (currentUser.photoURL) newProfile.photoUrl = currentUser.photoURL;
-            
+
             try {
               await setDoc(userRef, newProfile);
               setUserProfile(newProfile);
@@ -362,13 +362,13 @@ export default function App() {
   const handleCopy = async () => {
     if (pendingScan) {
       let copyText = `Species: ${pendingScan.basic?.species || pendingScan.species || 'Unknown'}\nRisk Level: ${pendingScan.basic?.risk || pendingScan.risk || 'Unknown'}\n\n`;
-      
+
       const summary = pendingScan.basic?.summary || pendingScan.summary;
       if (summary) copyText += `${summary}\n\n`;
 
       const mainIssue = pendingScan.basic?.mainIssue;
       if (mainIssue) copyText += `Main Issue: \n${mainIssue}\n\n`;
-      
+
       const actionPlan = pendingScan.pro?.stepByStepPlan || pendingScan.basic?.actionPlan || pendingScan.actionPlan;
       if (actionPlan && actionPlan.length > 0) {
         copyText += `Action Plan:\n${actionPlan.map((step: string, i: number) => `${i + 1}. ${step}`).join('\n')}\n\n`;
@@ -460,7 +460,7 @@ export default function App() {
       setPendingScan(parsedResponse);
       setIsSaved(false);
       setSavedScanId(null);
-      
+
       trackEvent(isFullProScan ? 'paid_scan_success' : 'scan_success', {
         species: parsedResponse.basic?.species || parsedResponse.species,
         problem: parsedResponse.basic?.mainIssue,
@@ -539,7 +539,7 @@ export default function App() {
       setIsProfileOpen(true);
       return;
     }
-    
+
     if ((userProfile?.scanPoints || 0) < 1) {
       setIsPaywallOpen(true);
       return;
@@ -561,17 +561,7 @@ export default function App() {
         pro: parsedResponse.pro
       });
 
-      // If already saved to database, update it with Pro content
-      if (isSaved && savedScanId) {
-        try {
-          const scanRef = doc(db, 'scans', savedScanId);
-          await updateDoc(scanRef, {
-            pro: parsedResponse.pro
-          });
-        } catch (e) {
-          console.error("Failed to update saved scan with Pro content", e);
-        }
-      }
+      // The server writes Pro content back to saved scans after point deduction.
 
       if (!parsedResponse?.billing?.alreadyUnlocked) {
         setUserProfile((prev: any) => prev ? { ...prev, scanPoints: Math.max(0, (prev.scanPoints || 0) - 1) } : null);
@@ -614,7 +604,7 @@ export default function App() {
     }
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-    
+
     try {
       const compressedData = await compressFile(file, 1024, 1024, 0.85, 'image/jpeg');
       setImageData(compressedData);
@@ -672,11 +662,11 @@ export default function App() {
   const handleSampleImageClick = async (imageUrl: string) => {
     setPreviewUrl(imageUrl);
     setIsLoading(true);
-    
+
     try {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      
+
       try {
         const compressedData = await compressFile(blob, 1024, 1024, 0.85, 'image/jpeg');
         setImageData(compressedData);
@@ -761,7 +751,7 @@ export default function App() {
 
       const scanRef = doc(collection(db, 'scans'));
       const scanId = scanRef.id;
-      
+
       let imageUrl = null;
       let originalImageUrl = null;
       let particleImageUrl = null;
@@ -781,29 +771,29 @@ export default function App() {
           risk: (pendingScan.basic?.risk || pendingScan.risk) || 'Unknown',
           summary: (pendingScan.basic?.summary || pendingScan.summary) || 'No summary provided.',
           killerTitle: (pendingScan.proPreview?.killerTitle || pendingScan.killerTitle) || null,
-          
+
           // Store raw structural data for full history reproduction
           basic: pendingScan.basic || null,
           proPreview: pendingScan.proPreview || null,
           pro: pendingScan.pro || null,
           actionPlan: pendingScan.actionPlan || null, // legacy
           recommendedProducts: pendingScan.recommendedProducts || null, // legacy
-          
+
           imageUrl: null,
           originalImageUrl: null,
           particleImageUrl: null,
-          imageData: compressedMain, 
+          imageData: compressedMain,
           imageType: finalImageType || 'image/jpeg',
           originalImageData: compressedOriginal,
           originalImageType: 'image/jpeg',
           createdAt: serverTimestamp()
         });
-        
+
         setSavedScanId(scanRef.id);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `scans/${scanRef.id}`);
       }
-      
+
       const userRef = doc(db, 'users', user.uid);
       try {
         await updateDoc(userRef, {
@@ -812,7 +802,7 @@ export default function App() {
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
       }
-      
+
       setUserProfile((prev: any) => prev ? { ...prev, plantsSaved: (prev.plantsSaved || 0) + 1 } : null);
       setIsSaved(true);
     } catch (e) {
@@ -825,20 +815,20 @@ export default function App() {
 
   const handleViewInCareGuide = async () => {
     if (!(pendingScan?.basic?.species || pendingScan?.species)) return;
-    
+
     setIsLoading(true);
     setLoadingMessage('Checking the archives...');
-    
+
     try {
       const cleanName = (pendingScan.basic?.species || pendingScan.species).split('(')[0].trim();
-      
+
       // Use query instead of fetching all plants
       const plantsQuery = query(collection(db, 'plants'), limit(100));
       const plantsSnap = await getDocs(plantsQuery);
       const plantsData = plantsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      
+
       const existingPlant = plantsData.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
-      
+
       if (existingPlant) {
         setIsLoading(false);
         navigate('/guide', { state: { targetPlantName: cleanName } });
@@ -850,10 +840,10 @@ export default function App() {
         alert('This plant is not in the care guide yet.');
         return;
       }
-      
+
       // Plant doesn't exist, generate it
       setLoadingMessage('Writing new care guide...');
-      
+
       // 1. Fetch image from Wikipedia
       let imageUrl = 'https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?auto=format&fit=crop&q=80&w=800'; // Fallback
       try {
@@ -869,15 +859,15 @@ export default function App() {
       } catch (e) {
         console.error("Failed to fetch Wikipedia image", e);
       }
-      
+
       // 2. Generate care details with Gemini
       const generatedData = await postJson('/api/generate-care-guide', {
         plantName: cleanName,
       }) as any;
-      
+
       // 3. Save to Firestore
       const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-      
+
       await setDoc(doc(collection(db, 'plants')), {
         name: cleanName,
         slug,
@@ -889,10 +879,10 @@ export default function App() {
         order: plantsData.length,
         createdAt: serverTimestamp()
       });
-      
+
       setIsLoading(false);
       navigate('/guide', { state: { targetPlantName: cleanName } });
-      
+
     } catch (error) {
       console.error("Error in handleViewInCareGuide", error);
       setIsLoading(false);
@@ -910,7 +900,7 @@ export default function App() {
           { label: 'Wilting', route: '/journal#drooping' },
           { label: 'Other', route: '/journal' }
         ].map((problem, i) => (
-          <button 
+          <button
             key={i}
             onClick={() => {
               if (problem.route.includes('#')) {
@@ -932,21 +922,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-earth-sand text-forest-deep font-sans antialiased flex flex-col">
-      <Header 
-        user={user} 
-        userProfile={userProfile} 
-        isMobileMenuOpen={isMobileMenuOpen} 
-        setIsMobileMenuOpen={setIsMobileMenuOpen} 
-        setIsProfileOpen={setIsProfileOpen} 
+      <Header
+        user={user}
+        userProfile={userProfile}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
+        setIsProfileOpen={setIsProfileOpen}
       />
 
-      <MobileNav 
+      <MobileNav
         isOpen={isMobileMenuOpen}
-        navRef={navRef} 
-        isNavTouching={isNavTouching} 
-        setIsNavTouching={setIsNavTouching} 
-        navDragProgress={navDragProgress} 
-        setNavDragProgress={setNavDragProgress} 
+        navRef={navRef}
+        isNavTouching={isNavTouching}
+        setIsNavTouching={setIsNavTouching}
+        navDragProgress={navDragProgress}
+        setNavDragProgress={setNavDragProgress}
         onNavigate={() => setIsMobileMenuOpen(false)}
       />
 
@@ -954,7 +944,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname.split('/')[1] || '/'}>
           <Route path="/" element={
-            <motion.main 
+            <motion.main
               key="analyze"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1005,7 +995,7 @@ export default function App() {
               onChange={handleFileChange}
               disabled={isLoading}
             />
-            
+
             {previewUrl && !isLoading && (
               <button
                 onClick={(e) => {
@@ -1037,7 +1027,7 @@ export default function App() {
                 />
               </div>
             )}
-            
+
             {/* Upload Overlay */}
             {!previewUrl && !isLoading && (
               <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center transition-all duration-300 px-6 pb-24 ${isDragging ? 'bg-forest-deep/20 backdrop-blur-sm' : 'bg-transparent opacity-100 group-hover:bg-forest-deep/5'}`}>
@@ -1068,7 +1058,7 @@ export default function App() {
             {isLoading && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pb-8 bg-white/80 backdrop-blur-md rounded-2xl">
                 <Loader />
-                <motion.p 
+                <motion.p
                    key={loadingMessage}
                    initial={{ opacity: 0, y: 5 }}
                    animate={{ opacity: 1, y: 0 }}
@@ -1113,17 +1103,17 @@ export default function App() {
         </div>
 
         {/* Primary Action Button - Organic Glass Pill */}
-        <motion.div 
+        <motion.div
           layout
           className={`flex justify-center isolate z-50 w-full mb-10 ${
             imageData && !isLoading && !pendingScan
               ? 'sticky bottom-28 px-4 pointer-events-none sm:relative sm:bottom-auto sm:px-0 sm:pointer-events-auto'
               : 'relative'
-          }`} 
+          }`}
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           ref={analyzeButtonRef}
         >
-          <motion.div 
+          <motion.div
             layout
             className={`transition-all duration-700 ease-[0.16, 1, 0.3, 1] ${
               imageData && !isLoading && !pendingScan
@@ -1131,12 +1121,12 @@ export default function App() {
                 : ''
             }`}
           >
-            <button 
+            <button
               onClick={handleAnalyzeClick}
               disabled={!imageData || isLoading}
               className={`relative w-[320px] h-[54px] flex items-center justify-center transition-all duration-500 active:duration-75 ease-[0.16, 1, 0.3, 1] rounded-full overflow-hidden group
                 ${(!imageData || isLoading)
-                  ? 'border border-forest-deep/15 text-forest-deep/40 bg-transparent cursor-not-allowed' 
+                  ? 'border border-forest-deep/15 text-forest-deep/40 bg-transparent cursor-not-allowed'
                   : 'bg-gradient-to-b from-[#f1f3ee] via-[#dce2d1] to-[#9caf88] text-[#2d3a2d] cursor-pointer active:scale-[0.98] active:translate-y-[1px] hover:shadow-[0_15px_30px_-8px_rgba(45,58,45,0.2),inset_0_1px_0_rgba(255,255,255,0.8)] border border-[#7d8f69]/40 ring-1 ring-[#f1f3ee]/40 ring-inset'
                 }
               `}
@@ -1145,12 +1135,12 @@ export default function App() {
               {!isLoading && imageData && (
                 <div className="absolute inset-0 rounded-full border border-white/10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               )}
-              
+
               {/* Glossy Overlay */}
               {!isLoading && imageData && (
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               )}
-              
+
               {isLoading ? (
                 <div className="flex items-center justify-center w-full h-full relative z-20">
                 <div className="relative w-10 h-10 mr-3">
@@ -1161,7 +1151,7 @@ export default function App() {
                       <path d="M40 95 C 40 70, 30 50, 15 35" fill="none" stroke="#78716c" strokeWidth="3" strokeLinecap="round" />
                       <path d="M40 80 C 55 70, 70 75, 85 65" fill="none" stroke="#78716c" strokeWidth="2.5" strokeLinecap="round" />
                       <path d="M50 75 C 45 60, 50 45, 45 25" fill="none" stroke="#78716c" strokeWidth="2" strokeLinecap="round" />
-                      
+
                       {/* Drooping dead leaves that fall off */}
                       <g style={{ transformOrigin: '15px 35px', animation: 'leaf-drop 1s ease-in forwards 0.2s' }}>
                         <path d="M15 35 C 5 45, 20 55, 15 35 Z" fill="#78716c" />
@@ -1171,23 +1161,23 @@ export default function App() {
                       </g>
 
                       {/* --- Revival Animation --- */}
-                      
+
                       {/* New Green Stem growing up */}
-                      <path 
-                        d="M40 95 C 45 70, 55 50, 65 20" 
-                        fill="none" 
-                        stroke="#10b981" 
-                        strokeWidth="3.5" 
+                      <path
+                        d="M40 95 C 45 70, 55 50, 65 20"
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="3.5"
                         strokeLinecap="round"
                         strokeDasharray="100"
                         strokeDashoffset="100"
                         style={{ animation: 'draw-line 2.4s ease-out forwards' }}
                       />
-                      <path 
-                        d="M50 60 C 35 50, 25 40, 15 20" 
-                        fill="none" 
-                        stroke="#10b981" 
-                        strokeWidth="2.5" 
+                      <path
+                        d="M50 60 C 35 50, 25 40, 15 20"
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="2.5"
                         strokeLinecap="round"
                         strokeDasharray="100"
                         strokeDashoffset="100"
@@ -1237,7 +1227,7 @@ export default function App() {
               <>
                 {/* High-end Dappled Shadow Hover Effect - Realistic Leaf Shadow */}
                 {previewUrl && (
-                  <div 
+                  <div
                     className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl mix-blend-multiply"
                     style={{
                       WebkitMaskImage: 'radial-gradient(ellipse 65% 80% at 50% 50%, transparent 25%, black 75%)',
@@ -1301,7 +1291,7 @@ export default function App() {
               </>
             )}
           </button>
-          
+
           {/* Cancel Button */}
           <AnimatePresence>
             {isLoading && (
@@ -1325,12 +1315,12 @@ export default function App() {
         {/* AI Response Inline Card */}
         <AnimatePresence>
           {pendingScan && !isLoading && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, height: 0, y: 20 }}
               animate={{ opacity: 1, height: 'auto', y: 0 }}
               exit={{ opacity: 0, height: 0, y: 20 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              ref={resultRef} 
+              ref={resultRef}
               className="w-full max-w-2xl mx-auto mt-12 bg-[#FAF8F5] rounded-3xl shadow-xl border border-forest-deep/10 overflow-hidden text-left"
             >
               {/* Header */}
@@ -1339,7 +1329,7 @@ export default function App() {
                   <div className="w-1 h-4 bg-forest-deep rounded-sm"></div>
                   Diagnosis Result
                 </h3>
-                <button 
+                <button
                   onClick={handleCopy}
                   className="flex items-center gap-2 text-forest-deep/60 hover:text-forest-deep px-4 py-2 rounded-lg hover:bg-forest-deep/5 transition-colors text-xs font-semibold uppercase tracking-widest cursor-pointer"
                 >
@@ -1347,7 +1337,7 @@ export default function App() {
                   {isCopied ? <span className="text-emerald-600">Copied</span> : 'Copy'}
                 </button>
               </div>
-              
+
               {/* Content */}
               <div className="p-6 sm:p-8">
                 {/* Tier 1: Essence */}
@@ -1441,7 +1431,7 @@ export default function App() {
                 {/* Pro Content vs Pro Preview Card */}
                 {pendingScan?.pro ? (
                   <div className="mt-10 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    
+
                     {/* Deep Dive */}
                     {pendingScan.pro.deepDive && (
                       <div className="markdown-body prose prose-stone max-w-none prose-headings:text-forest-deep prose-p:text-forest-deep/90 prose-a:text-forest-deep text-base leading-relaxed">
@@ -1530,10 +1520,10 @@ export default function App() {
                             </h4>
                             <span className="text-[9px] text-forest-deep/40 uppercase tracking-widest">*Affiliate Links</span>
                           </div>
-                          
+
                           <div className="flex overflow-x-auto gap-3 pb-4 custom-scrollbar-horizontal -mx-6 px-6 sm:mx-0 sm:px-0">
                             {(pendingScan.pro?.recommendedProducts || pendingScan.basic?.recommendedProducts || pendingScan.recommendedProducts).map((product: any, idx: number) => (
-                              <a 
+                              <a
                                 key={idx}
                                 href={`https://www.amazon.com/s?k=${encodeURIComponent(product.searchKeyword || product.name)}&tag=${AMAZON_AFFILIATE_TAG}`}
                                 target="_blank"
@@ -1558,12 +1548,12 @@ export default function App() {
                       {/* Decorative abstract shapes */}
                       <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform duration-700 group-hover:scale-110"></div>
                       <div className="absolute bottom-0 left-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-3xl -ml-10 -mb-10 transition-transform duration-700 group-hover:scale-110"></div>
-                      
+
                       {/* Decorative icon */}
                       <div className="absolute top-8 right-8 text-yellow-500/10 transition-transform duration-700 group-hover:rotate-12 group-hover:scale-110 pointer-events-none">
                         <Crown className="w-32 h-32" />
                       </div>
-                      
+
                       <div className="relative z-10">
                         <div className="flex items-center gap-3 mb-8">
                           <div className="bg-yellow-500/20 text-yellow-300 px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border border-yellow-500/30 flex items-center gap-1.5 shadow-sm backdrop-blur-md">
@@ -1606,7 +1596,7 @@ export default function App() {
                           </ul>
                         </div>
 
-                        <button 
+                        <button
                           onClick={handleUnlockPro}
                           disabled={isUnlockingPro}
                           className="w-full bg-white hover:bg-stone-100 text-forest-deep py-4 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-[0_0_40px_rgba(255,255,255,0.1)] hover:shadow-[0_0_60px_rgba(255,255,255,0.2)]"
@@ -1627,10 +1617,10 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
-                
+
                 {/* Action Buttons */}
                 <div className="mt-6 pt-6 border-t border-forest-deep/10 flex flex-row gap-3">
-                  <button 
+                  <button
                     onClick={async () => {
                       if (!user) {
                         try {
@@ -1649,8 +1639,8 @@ export default function App() {
                     className={`flex-[2] px-4 py-3.5 rounded-full text-[11px] font-semibold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
                       (pendingScan?.basic?.isPlantOrAnimal ?? pendingScan?.isPlantOrAnimal) === false
                         ? 'border border-forest-deep/10 text-forest-deep/40 cursor-not-allowed bg-[#FAF8F5]'
-                        : isSaved 
-                          ? 'bg-[#F4F9F4] text-emerald-900 border border-emerald-900/20 hover:bg-[#EBF5EB]' 
+                        : isSaved
+                          ? 'bg-[#F4F9F4] text-emerald-900 border border-emerald-900/20 hover:bg-[#EBF5EB]'
                           : isSaving
                             ? 'bg-forest-deep/80 text-white cursor-wait'
                             : 'bg-forest-deep text-white hover:bg-[#1C2E24] shadow-xs cursor-pointer'
@@ -1666,7 +1656,7 @@ export default function App() {
                       <><Flower className="w-4 h-4" /> Save to Garden</>
                     )}
                   </button>
-                  <button 
+                  <button
                     onClick={() => { trackEvent('share_click'); setIsShareOpen(true); }}
                     className="flex-1 px-4 py-3.5 bg-white text-forest-deep border border-forest-deep/15 rounded-full text-[11px] font-semibold uppercase tracking-widest hover:bg-[#FAF8F5] hover:border-forest-deep/25 transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                   >
@@ -1712,8 +1702,8 @@ export default function App() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="flex-1 w-full"
             >
-              <HistoryView 
-                user={user} 
+              <HistoryView
+                user={user}
                 scans={gardenScans}
                 isLoading={isGardenLoading}
                 loadError={gardenLoadError}
@@ -1722,7 +1712,7 @@ export default function App() {
                   setImageData(data.imageData);
                   setImageType(data.imageType);
                   setIsShareOpen(true);
-                }} 
+                }}
               />
             </motion.div>
           } />
@@ -1822,18 +1812,18 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <LimitModal 
-        showLimitModal={showLimitModal} 
-        setShowLimitModal={setShowLimitModal} 
-        setIsProfileOpen={setIsProfileOpen} 
+      <LimitModal
+        showLimitModal={showLimitModal}
+        setShowLimitModal={setShowLimitModal}
+        setIsProfileOpen={setIsProfileOpen}
       />
 
-      <ProfileModal 
-        isProfileOpen={isProfileOpen} 
-        setIsProfileOpen={setIsProfileOpen} 
-        user={user} 
-        userProfile={userProfile} 
-        logOut={logOut} 
+      <ProfileModal
+        isProfileOpen={isProfileOpen}
+        setIsProfileOpen={setIsProfileOpen}
+        user={user}
+        userProfile={userProfile}
+        logOut={logOut}
         signInWithGoogle={signInWithGoogle}
         onBuyPoints={() => setIsPricingModalOpen(true)}
       />
@@ -1847,7 +1837,7 @@ export default function App() {
         }}
       />
 
-      <PaywallModal 
+      <PaywallModal
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
         onBuyPoints={() => {
@@ -1856,7 +1846,7 @@ export default function App() {
         }}
       />
 
-      <ShareModal 
+      <ShareModal
         isOpen={isShareOpen}
         onClose={() => setIsShareOpen(false)}
         plantData={pendingScan ? {

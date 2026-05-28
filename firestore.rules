@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // ===============================================================
     // Assumed Data Model
     // ===============================================================
@@ -64,15 +64,15 @@ service cloud.firestore {
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
+
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.admin == true ||
@@ -119,7 +119,7 @@ service cloud.firestore {
     function isValidGuestLimit(data) {
       return hasOnlyAllowedFields(['count', 'lastScanDate']) &&
              hasRequiredFields(['count']) &&
-             data.count is number && data.count >= 0 && data.count <= 3 &&
+             data.count is number && data.count >= 0 && data.count <= 1 &&
              (!('lastScanDate' in data) || data.lastScanDate == null || data.lastScanDate is string);
     }
 
@@ -138,7 +138,7 @@ service cloud.firestore {
     }
 
     function isValidScan(data) {
-      return hasOnlyAllowedFields(['userId', 'species', 'risk', 'summary', 'imageUrl', 'imageData', 'imageType', 'originalImageData', 'originalImageType', 'createdAt', 'coreName', 'diagnosis', 'treatment', 'prevention', 'killerTitle', 'originalImageUrl', 'particleImageUrl', 'basic', 'proPreview', 'pro', 'actionPlan', 'recommendedProducts']) &&
+      return hasOnlyAllowedFields(['userId', 'species', 'risk', 'summary', 'imageUrl', 'imageData', 'imageType', 'originalImageData', 'originalImageType', 'createdAt', 'coreName', 'diagnosis', 'treatment', 'prevention', 'killerTitle', 'originalImageUrl', 'particleImageUrl', 'basic', 'proPreview', 'pro', 'proUnlocked', 'proUnlockedAt', 'actionPlan', 'recommendedProducts']) &&
              hasRequiredFields(['userId', 'createdAt']) &&
              data.userId is string && data.userId == request.auth.uid &&
              (!('species' in data) || data.species == null || (data.species is string && data.species.size() <= 500)) &&
@@ -160,8 +160,27 @@ service cloud.firestore {
              (!('basic' in data) || data.basic == null || data.basic is map) &&
              (!('proPreview' in data) || data.proPreview == null || data.proPreview is map) &&
              (!('pro' in data) || data.pro == null || data.pro is map) &&
+             (!('proUnlocked' in data) || data.proUnlocked == null || data.proUnlocked is bool) &&
+             (!('proUnlockedAt' in data) || data.proUnlockedAt == null || data.proUnlockedAt is timestamp) &&
              (!('actionPlan' in data) || data.actionPlan == null || data.actionPlan is list) &&
              (!('recommendedProducts' in data) || data.recommendedProducts == null || data.recommendedProducts is list);
+    }
+
+    function isClientScanCreate(data) {
+      return isValidScan(data) &&
+             data.userId == request.auth.uid &&
+             data.get('proUnlocked', false) == false &&
+             !('proUnlockedAt' in data);
+    }
+
+    function isClientScanUpdate() {
+      return isValidScan(request.resource.data) &&
+             resource.data.userId == request.auth.uid &&
+             request.resource.data.userId == resource.data.userId &&
+             request.resource.data.createdAt == resource.data.createdAt &&
+             request.resource.data.get('pro', null) == resource.data.get('pro', null) &&
+             request.resource.data.get('proUnlocked', false) == resource.data.get('proUnlocked', false) &&
+             request.resource.data.get('proUnlockedAt', null) == resource.data.get('proUnlockedAt', null);
     }
 
     function isValidPlant(data) {
@@ -184,7 +203,7 @@ service cloud.firestore {
       let isAllowed = data.keys().hasOnly(['totalScans', 'successfulScans', 'geminiCalls', 'freeScans', 'shareClicks', 'unlockClicks', 'pricingPackageClicks', 'emailSubmissions', 'saveToGarden', 'topPlants', 'topProblems', 'today']);
       let validTopPlants = !('topPlants' in data) || data.topPlants == null || (data.topPlants is map && data.topPlants.size() <= 500);
       let validTopProblems = !('topProblems' in data) || data.topProblems == null || (data.topProblems is map && data.topProblems.size() <= 500);
-      
+
       return isAllowed && validTopPlants && validTopProblems;
     }
 
@@ -203,15 +222,16 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
-      allow update: if isValidUser(request.resource.data) && 
+      allow update: if isValidUser(request.resource.data) &&
                     (
                       isAdmin() ||
                       (isOwner(userId) &&
-                       request.resource.data.role == resource.data.role && 
+                       request.resource.data.role == resource.data.role &&
                        request.resource.data.createdAt == resource.data.createdAt &&
                        (request.resource.data.get('plantsScanned', 0) == resource.data.get('plantsScanned', 0) || request.resource.data.get('plantsScanned', 0) == resource.data.get('plantsScanned', 0) + 1) &&
                        (request.resource.data.get('plantsSaved', 0) == resource.data.get('plantsSaved', 0) || request.resource.data.get('plantsSaved', 0) == resource.data.get('plantsSaved', 0) + 1) &&
-                       (request.resource.data.get('dailyScans', 0) == 0 || request.resource.data.get('dailyScans', 0) == resource.data.get('dailyScans', 0) + 1 || request.resource.data.get('dailyScans', 0) == resource.data.get('dailyScans', 0)) &&
+                       request.resource.data.get('dailyScans', 0) == resource.data.get('dailyScans', 0) &&
+                       request.resource.data.get('lastScanDate', '') == resource.data.get('lastScanDate', '') &&
                        request.resource.data.get('scanPoints', 0) == resource.data.get('scanPoints', 0)
                       )
                     );
@@ -242,8 +262,8 @@ service cloud.firestore {
 
     match /scans/{scanId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidScan(request.resource.data);
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidScan(request.resource.data);
+      allow create: if isAuthenticated() && (isAdmin() || isClientScanCreate(request.resource.data));
+      allow update: if isAuthenticated() && (isAdmin() || isClientScanUpdate());
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }

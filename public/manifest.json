@@ -1,0 +1,21 @@
+{
+  "name": "SoilAI - Plant Care",
+  "short_name": "SoilAI",
+  "description": "AI-powered plant diagnosis and care guide. Get roasted. Save your plants.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a3621",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

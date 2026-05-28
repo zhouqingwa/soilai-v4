@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#FFFFFF"/>
+
+  <!-- Subtle background elements -->
+  <g stroke="#F3F4F6" stroke-width="2" fill="none">
+    <line x1="-100" y1="350" x2="400" y2="630" />
+    <line x1="250" y1="630" x2="400" y2="200" />
+    <rect x="780" y="50" width="400" height="450" rx="16" transform="rotate(20 780 50)" />
+  </g>
+
+  <rect x="280" y="420" width="20" height="20" rx="4" fill="#D1D5DB" transform="rotate(-15 280 420)" />
+  <rect x="910" y="150" width="16" height="16" rx="4" fill="#D1D5DB" transform="rotate(45 910 150)" />
+
+  <!-- Flower Icons -->
+  <g fill="none" stroke="#1A2B22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Top Left -->
+    <g transform="translate(250, 70) scale(6.5) rotate(-15 12 12)">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 16.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 1 1 4.5 4.5 4.5 4.5 0 1 1-4.5 4.5"/>
+      <path d="M12 7.5V9" /><path d="M7.5 12H9" /><path d="M16.5 12H15" /><path d="M12 16.5V15" />
+      <path d="m8 8 1.88 1.88" /><path d="M14.12 9.88 16 8" /><path d="m8 16 1.88-1.88" /><path d="M14.12 14.12 16 16" />
+    </g>
+    <!-- Top Right -->
+    <g transform="translate(730, 80) scale(6) rotate(22 12 12)">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 16.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 1 1 4.5 4.5 4.5 4.5 0 1 1-4.5 4.5"/>
+      <path d="M12 7.5V9" /><path d="M7.5 12H9" /><path d="M16.5 12H15" /><path d="M12 16.5V15" />
+      <path d="m8 8 1.88 1.88" /><path d="M14.12 9.88 16 8" /><path d="m8 16 1.88-1.88" /><path d="M14.12 14.12 16 16" />
+    </g>
+    <!-- Bottom Middle -->
+    <g transform="translate(540, 320) scale(6) rotate(-10 12 12)">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 16.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 1 1 4.5 4.5 4.5 4.5 0 1 1-4.5 4.5"/>
+      <path d="M12 7.5V9" /><path d="M7.5 12H9" /><path d="M16.5 12H15" /><path d="M12 16.5V15" />
+      <path d="m8 8 1.88 1.88" /><path d="M14.12 9.88 16 8" /><path d="m8 16 1.88-1.88" /><path d="M14.12 14.12 16 16" />
+    </g>
+  </g>
+
+  <!-- Title Text -->
+  <text x="600" y="275" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="70" font-weight="500" fill="#1A2B22" text-anchor="middle">Soil AI - Plant Roast &amp; Care</text>
+
+  <!-- Buy Now Text -->
+  <text x="825" y="340" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#1A2B22" text-anchor="start">TRY NOW &gt;</text>
+</svg>
