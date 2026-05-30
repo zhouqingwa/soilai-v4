@@ -1,4 +1,11 @@
-export const compressFile = async (file: File | Blob, maxWidth = 1024, maxHeight = 1024, initialQuality = 0.85, outputMimeType = 'image/jpeg'): Promise<string> => {
+export const compressFile = async (
+  file: File | Blob,
+  maxWidth = 1024,
+  maxHeight = 1024,
+  initialQuality = 0.85,
+  outputMimeType = 'image/jpeg',
+  maxBase64Length = 700 * 1024
+): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -35,12 +42,15 @@ export const compressFile = async (file: File | Blob, maxWidth = 1024, maxHeight
         let dataUrl = canvas.toDataURL(outputMimeType, quality);
         let resultBase64 = dataUrl.split(',')[1];
 
-        const MAX_BASE64_LENGTH = 700 * 1024;
-
-        while (resultBase64.length > MAX_BASE64_LENGTH && quality > 0.1) {
+        while (resultBase64.length > maxBase64Length && quality > 0.15) {
           quality -= 0.1;
           dataUrl = canvas.toDataURL(outputMimeType, quality);
           resultBase64 = dataUrl.split(',')[1];
+        }
+
+        if (resultBase64.length > maxBase64Length) {
+          reject(new Error("Compressed image is still too large"));
+          return;
         }
 
         resolve(resultBase64);
@@ -55,7 +65,15 @@ export const compressFile = async (file: File | Blob, maxWidth = 1024, maxHeight
   });
 };
 
-export const compressImage = async (base64Str: string, mimeType: string, maxWidth = 1024, maxHeight = 1024, initialQuality = 0.85, outputMimeType = 'image/jpeg'): Promise<string> => {
+export const compressImage = async (
+  base64Str: string,
+  mimeType: string,
+  maxWidth = 1024,
+  maxHeight = 1024,
+  initialQuality = 0.85,
+  outputMimeType = 'image/jpeg',
+  maxBase64Length = 700 * 1024
+): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     // Do not set crossOrigin for data URIs as it can cause issues
@@ -91,17 +109,13 @@ export const compressImage = async (base64Str: string, mimeType: string, maxWidt
         let dataUrl = canvas.toDataURL(outputMimeType, quality);
         let resultBase64 = dataUrl.split(',')[1];
 
-        // Target max size ~700KB in base64 (which is ~500KB binary)
-        // Firestore limit is 1MB total document size.
-        const MAX_BASE64_LENGTH = 700 * 1024;
-
-        while (resultBase64.length > MAX_BASE64_LENGTH && quality > 0.1) {
+        while (resultBase64.length > maxBase64Length && quality > 0.15) {
           quality -= 0.1;
           dataUrl = canvas.toDataURL(outputMimeType, quality);
           resultBase64 = dataUrl.split(',')[1];
         }
 
-        resolve(resultBase64);
+        resolve(resultBase64.length <= maxBase64Length ? resultBase64 : base64Str);
       } catch (e) {
         console.warn("Canvas compression failed (likely tainted canvas), returning original image", e);
         resolve(base64Str);

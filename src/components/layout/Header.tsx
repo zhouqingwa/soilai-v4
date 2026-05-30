@@ -22,7 +22,7 @@ export const Header = ({
 
   return (
     <>
-      <header className="flex items-center justify-between px-4 md:px-12 py-4 md:py-6 sticky top-0 md:relative z-[100] pointer-events-none md:pointer-events-auto">
+      <header className="flex items-center justify-between px-4 md:px-12 py-4 md:py-6 sticky top-0 md:relative z-[100] pointer-events-none md:pointer-events-auto bg-earth-sand/85 backdrop-blur-md border-b border-forest-deep/5 md:bg-transparent md:backdrop-blur-0 md:border-b-0">
         <Link to="/" className="flex items-center gap-2 group cursor-pointer py-2 pointer-events-auto transition-all">
           <img src="/favicon.svg" alt="" aria-hidden="true" className="h-6 w-6" />
           <h2 className="text-forest-deep text-[1.1rem] leading-none font-semibold tracking-tight uppercase mt-0.5">Soil AI</h2>

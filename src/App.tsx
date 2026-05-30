@@ -128,11 +128,19 @@ const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (fetchError) {
+    const message = fetchError instanceof Error ? fetchError.message : 'Network request failed';
+    const error = new Error(message);
+    (error as any).code = 'network_failed';
+    throw error;
+  }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -147,6 +155,9 @@ const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
 
 const getAnalysisErrorMessage = (error: unknown) => {
   const code = (error as any)?.code;
+  if (code === 'network_failed') {
+    return 'The upload did not reach the lab. The photo may be too large or the connection dropped; refresh the page and try again with Wi-Fi or a smaller photo.';
+  }
   if (code === 'ai_unavailable') {
     return 'The AI service is not reachable right now. Check the Gemini API relay settings, then try again.';
   }
@@ -166,9 +177,43 @@ const getAnalysisErrorMessage = (error: unknown) => {
 
 import { trackEvent } from './lib/analytics';
 
+const ANALYSIS_IMAGE_MAX_BASE64_LENGTH = 420 * 1024;
+const FALLBACK_IMAGE_MAX_BASE64_LENGTH = 1200 * 1024;
+
+const readBlobAsBase64 = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      resolve(base64String.split(',')[1] || '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+const prepareImageForAnalysis = async (blob: Blob) => {
+  try {
+    return {
+      base64Data: await compressFile(blob, 960, 960, 0.78, 'image/jpeg', ANALYSIS_IMAGE_MAX_BASE64_LENGTH),
+      mimeType: 'image/jpeg',
+    };
+  } catch (compressionError) {
+    console.warn('Image compression failed, checking safe fallback size:', compressionError);
+    const base64Data = await readBlobAsBase64(blob);
+    if (base64Data.length <= FALLBACK_IMAGE_MAX_BASE64_LENGTH) {
+      return {
+        base64Data,
+        mimeType: blob.type || 'image/jpeg',
+      };
+    }
+    throw new Error('This photo is too large for mobile upload. Please choose a smaller JPG or PNG image.');
+  }
+};
+
 export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPreparingImage, setIsPreparingImage] = useState(false);
   const [userQuestion, setUserQuestion] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -627,13 +672,16 @@ export default function App() {
   };
 
   const openPhotoPicker = () => {
-    if (isLoading) return;
+    if (isLoading || isPreparingImage) return;
     uploadInputRef.current?.click();
   };
 
   const processFile = async (file: File) => {
     setAnalysisError(null);
     setPendingScan(null);
+    setImageData(null);
+    setImageType(null);
+    setIsPreparingImage(true);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -641,23 +689,14 @@ export default function App() {
     setPreviewUrl(url);
 
     try {
-      const compressedData = await compressFile(file, 1024, 1024, 0.85, 'image/jpeg');
-      setImageData(compressedData);
-      setImageType('image/jpeg');
+      const preparedImage = await prepareImageForAnalysis(file);
+      setImageData(preparedImage.base64Data);
+      setImageType(preparedImage.mimeType);
     } catch (error) {
       console.error("Failed to compress image before analysis", error);
-      // Fallback to reading the file directly if compression fails
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          resolve(base64String.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      setImageData(base64Data);
-      setImageType(file.type);
+      setAnalysisError(error instanceof Error ? error.message : 'This photo could not be prepared for upload. Please try a smaller image.');
+    } finally {
+      setIsPreparingImage(false);
     }
   };
 
@@ -698,6 +737,8 @@ export default function App() {
   const handleSampleImageClick = async (imageUrl: string) => {
     setAnalysisError(null);
     setPendingScan(null);
+    setImageData(null);
+    setImageType(null);
     setPreviewUrl(imageUrl);
     setIsLoading(true);
 
@@ -705,25 +746,9 @@ export default function App() {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
 
-      try {
-        const compressedData = await compressFile(blob, 1024, 1024, 0.85, 'image/jpeg');
-        setImageData(compressedData);
-        setImageType('image/jpeg');
-      } catch (error) {
-        console.error("Failed to compress sample image", error);
-        // Fallback to reading the blob directly
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64String = reader.result as string;
-            resolve(base64String.split(',')[1]);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-        setImageData(base64Data);
-        setImageType(blob.type || 'image/jpeg');
-      }
+      const preparedImage = await prepareImageForAnalysis(blob);
+      setImageData(preparedImage.base64Data);
+      setImageType(preparedImage.mimeType);
     } catch (error) {
       console.error('Error fetching sample image:', error);
       alert('Failed to load sample image.');
@@ -746,6 +771,7 @@ export default function App() {
   };
 
   const getPrimaryAnalyzeLabel = () => {
+    if (isPreparingImage) return 'Preparing photo...';
     if (!previewUrl) return 'Waiting for photo...';
     if (!user) return 'Analyze Plant';
 
@@ -1006,7 +1032,7 @@ export default function App() {
         </div>
 
         {/* Central Visual */}
-        <div className="relative w-full max-w-sm sm:max-w-md aspect-[9/19] md:aspect-[9/17] mb-12 group mx-auto mt-8">
+        <div className="relative w-full max-w-sm sm:max-w-md aspect-[4/5] md:aspect-[9/10] mb-8 group mx-auto mt-4">
           {/* Glow effect */}
           <div className="absolute inset-0 bg-white/40 rounded-xl blur-3xl scale-95 opacity-50 group-hover:opacity-80 transition-opacity"></div>
 
@@ -1015,7 +1041,7 @@ export default function App() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             role="button"
-            tabIndex={isLoading ? -1 : 0}
+            tabIndex={isLoading || isPreparingImage ? -1 : 0}
             onClick={openPhotoPicker}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -1023,7 +1049,7 @@ export default function App() {
                 openPhotoPicker();
               }
             }}
-            className={`relative block w-full h-full bg-white/40 rounded-2xl overflow-hidden border border-forest-deep/10 shadow-sm cursor-pointer group transition-all duration-300 ${isLoading ? 'pointer-events-none' : 'hover:border-forest-deep/20'} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''}`}
+            className={`relative block w-full h-full bg-white/40 rounded-2xl overflow-hidden border border-forest-deep/10 shadow-sm cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : 'hover:border-forest-deep/20'} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''}`}
           >
             <input
               ref={uploadInputRef}
@@ -1031,10 +1057,10 @@ export default function App() {
               className="hidden"
               accept="image/*"
               onChange={handleFileChange}
-              disabled={isLoading}
+              disabled={isLoading || isPreparingImage}
             />
 
-            {previewUrl && !isLoading && (
+            {previewUrl && !isLoading && !isPreparingImage && (
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -1051,7 +1077,7 @@ export default function App() {
               <img
                 src={previewUrl}
                 alt="Uploaded plant"
-                className={`w-full h-full object-cover transition-all duration-700 ${isLoading ? 'scale-110 blur-md opacity-40' : 'group-hover:scale-105 opacity-95 group-hover:opacity-90'}`}
+                className={`w-full h-full object-contain bg-[#F7F4EC] p-2 transition-all duration-700 ${isLoading ? 'scale-105 blur-md opacity-40' : 'opacity-95 group-hover:opacity-90'}`}
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -1076,7 +1102,7 @@ export default function App() {
             )}
 
             {/* Change Photo Overlay (when image is uploaded) */}
-            {previewUrl && !isLoading && (
+            {previewUrl && !isLoading && !isPreparingImage && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-forest-deep/30 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 backdrop-blur-xs px-6">
                 <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center mb-3 shadow-md transform transition-transform duration-300 scale-95 group-hover:scale-100">
                   <Camera className="w-5 h-5 text-forest-deep" strokeWidth={1.8} />
@@ -1099,6 +1125,15 @@ export default function App() {
                 >
                   {loadingMessage}
                 </motion.p>
+              </div>
+            )}
+
+            {isPreparingImage && !isLoading && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/75 backdrop-blur-sm rounded-2xl px-6">
+                <Loader />
+                <p className="mt-4 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-forest-deep/70">
+                  Preparing photo...
+                </p>
               </div>
             )}
           </div>
@@ -1138,7 +1173,7 @@ export default function App() {
         <motion.div
           layout
           className={`flex justify-center isolate z-50 w-full mb-10 ${
-            imageData && !isLoading && !pendingScan
+            imageData && !isLoading && !isPreparingImage && !pendingScan
               ? 'sticky bottom-28 px-4 pointer-events-none sm:relative sm:bottom-auto sm:px-0 sm:pointer-events-auto'
               : 'relative'
           }`}
@@ -1148,28 +1183,28 @@ export default function App() {
           <motion.div
             layout
             className={`transition-all duration-700 ease-[0.16, 1, 0.3, 1] ${
-              imageData && !isLoading && !pendingScan
+              imageData && !isLoading && !isPreparingImage && !pendingScan
                 ? 'pointer-events-auto'
                 : ''
             }`}
           >
             <button
               onClick={handleAnalyzeClick}
-              disabled={!imageData || isLoading}
+              disabled={!imageData || isLoading || isPreparingImage}
               className={`relative w-[320px] h-[54px] flex items-center justify-center transition-all duration-500 active:duration-75 ease-[0.16, 1, 0.3, 1] rounded-full overflow-hidden group
-                ${(!imageData || isLoading)
+                ${(!imageData || isLoading || isPreparingImage)
                   ? 'border border-forest-deep/15 text-forest-deep/40 bg-transparent cursor-not-allowed'
                   : 'bg-gradient-to-b from-[#f1f3ee] via-[#dce2d1] to-[#9caf88] text-[#2d3a2d] cursor-pointer active:scale-[0.98] active:translate-y-[1px] hover:shadow-[0_15px_30px_-8px_rgba(45,58,45,0.2),inset_0_1px_0_rgba(255,255,255,0.8)] border border-[#7d8f69]/40 ring-1 ring-[#f1f3ee]/40 ring-inset'
                 }
               `}
             >
               {/* Subtle Edge Glow Overlay */}
-              {!isLoading && imageData && (
+              {!isLoading && !isPreparingImage && imageData && (
                 <div className="absolute inset-0 rounded-full border border-white/10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               )}
 
               {/* Glossy Overlay */}
-              {!isLoading && imageData && (
+              {!isLoading && !isPreparingImage && imageData && (
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               )}
 
@@ -1315,7 +1350,7 @@ export default function App() {
                     </div>
                   )}
                   <span className={`uppercase font-semibold text-xs transition-all duration-500 ${
-                    (!imageData || isLoading) ? 'text-forest-deep/40 tracking-[0.12em]' : 'text-[#2d3a2d] tracking-[0.14em] group-hover:tracking-[0.18em]'
+                    (!imageData || isLoading || isPreparingImage) ? 'text-forest-deep/40 tracking-[0.12em]' : 'text-[#2d3a2d] tracking-[0.14em] group-hover:tracking-[0.18em]'
                   }`}>
                     {getPrimaryAnalyzeLabel()}
                   </span>
@@ -1366,7 +1401,7 @@ export default function App() {
                     <div className="mt-6 flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={handleAnalyzeClick}
-                        disabled={!imageData}
+                        disabled={!imageData || isPreparingImage}
                         className="inline-flex items-center justify-center gap-2 rounded-full bg-forest-deep px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white transition-colors hover:bg-[#1C2E24] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCcw className="w-4 h-4" />
