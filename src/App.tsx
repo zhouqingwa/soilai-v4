@@ -1032,7 +1032,11 @@ export default function App() {
         </div>
 
         {/* Central Visual */}
-        <div className="relative w-full max-w-sm sm:max-w-md aspect-[4/5] md:aspect-[9/10] mb-8 group mx-auto mt-4">
+        <div className={`relative w-full group mx-auto ${
+          previewUrl
+            ? 'max-w-sm sm:max-w-md aspect-[4/5] md:aspect-[9/10] mb-8 mt-4'
+            : 'max-w-[20rem] sm:max-w-[22rem] md:max-w-sm aspect-[941/1672] mb-10 mt-4'
+        }`}>
           {/* Glow effect */}
           <div className="absolute inset-0 bg-white/40 rounded-xl blur-3xl scale-95 opacity-50 group-hover:opacity-80 transition-opacity"></div>
 
