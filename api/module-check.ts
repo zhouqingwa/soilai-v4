@@ -1,11 +1,11 @@
 const checks = [
-  { module: '../server/http', load: () => import('../server/http') },
-  { module: '../server/memory-limit', load: () => import('../server/memory-limit') },
-  { module: '../server/firebase-rest', load: () => import('../server/firebase-rest') },
-  { module: '../server/usage', load: () => import('../server/usage') },
-  { module: '../server/gemini', load: () => import('../server/gemini') },
-  { module: '../server/paypal', load: () => import('../server/paypal') },
-  { module: '../server/api-handlers', load: () => import('../server/api-handlers') },
+  { module: '../server/http.js', load: () => import('../server/http.js') },
+  { module: '../server/memory-limit.js', load: () => import('../server/memory-limit.js') },
+  { module: '../server/firebase-rest.js', load: () => import('../server/firebase-rest.js') },
+  { module: '../server/usage.js', load: () => import('../server/usage.js') },
+  { module: '../server/gemini.js', load: () => import('../server/gemini.js') },
+  { module: '../server/paypal.js', load: () => import('../server/paypal.js') },
+  { module: '../server/api-handlers.js', load: () => import('../server/api-handlers.js') },
 ];
 
 export default async function handler(req: any, res: any) {

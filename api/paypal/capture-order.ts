@@ -1,5 +1,5 @@
-import { handleCapturePayPalOrder } from '../../server/api-handlers';
-import { readBody, requestContext, sendError } from '../_utils';
+import { handleCapturePayPalOrder } from '../../server/api-handlers.js';
+import { readBody, requestContext, sendError } from '../_utils.js';
 
 export const config = {
   maxDuration: 20,

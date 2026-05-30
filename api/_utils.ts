@@ -1,4 +1,4 @@
-import { toPublicError } from '../server/http';
+import { toPublicError } from '../server/http.js';
 
 export const requestContext = (req: any) => ({
   headers: req.headers || {},

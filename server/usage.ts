@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto';
-import { ApiError } from './http';
-import { enforceMemoryLimit, msUntilUtcMidnight, releaseMemoryLimit } from './memory-limit';
+import { ApiError } from './http.js';
+import { enforceMemoryLimit, msUntilUtcMidnight, releaseMemoryLimit } from './memory-limit.js';
 import {
   type AuthenticatedUser,
   beginFirestoreTransaction,
@@ -12,7 +12,7 @@ import {
   getDocumentsInTransaction,
   hasServiceAccountCredentials,
   rollbackFirestoreTransaction,
-} from './firebase-rest';
+} from './firebase-rest.js';
 
 const todayKey = () => new Date().toISOString().split('T')[0];
 

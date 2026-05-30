@@ -30,27 +30,27 @@ const localApiPlugin = () => ({
   configureServer(server: any) {
     const routes: Record<string, (body: any, req: any) => Promise<unknown>> = {
       '/api/analyze-plant': async (body, req) => {
-        const { handleAnalyzePlant } = await import('./server/api-handlers');
+        const { handleAnalyzePlant } = await import('./server/api-handlers.js');
         return handleAnalyzePlant(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
       '/api/generate-illustration': async (body, req) => {
-        const { handleGenerateIllustration } = await import('./server/api-handlers');
+        const { handleGenerateIllustration } = await import('./server/api-handlers.js');
         return handleGenerateIllustration(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
       '/api/generate-care-guide': async (body, req) => {
-        const { handleGenerateCareGuide } = await import('./server/api-handlers');
+        const { handleGenerateCareGuide } = await import('./server/api-handlers.js');
         return handleGenerateCareGuide(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
       '/api/track-event': async (body, req) => {
-        const { handleTrackEvent } = await import('./server/api-handlers');
+        const { handleTrackEvent } = await import('./server/api-handlers.js');
         return handleTrackEvent(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
       '/api/paypal/create-order': async (body, req) => {
-        const { handleCreatePayPalOrder } = await import('./server/api-handlers');
+        const { handleCreatePayPalOrder } = await import('./server/api-handlers.js');
         return handleCreatePayPalOrder(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
       '/api/paypal/capture-order': async (body, req) => {
-        const { handleCapturePayPalOrder } = await import('./server/api-handlers');
+        const { handleCapturePayPalOrder } = await import('./server/api-handlers.js');
         return handleCapturePayPalOrder(body, { headers: req.headers, ip: req.socket?.remoteAddress });
       },
     };
@@ -68,7 +68,7 @@ const localApiPlugin = () => ({
           sendJson(res, 200, result);
         } catch (error) {
           console.error(`${route} failed:`, error);
-          const { toPublicError } = await import('./server/http');
+          const { toPublicError } = await import('./server/http.js');
           const publicError = toPublicError(error);
           sendJson(res, publicError.statusCode, publicError.body);
         }

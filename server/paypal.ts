@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
-import { ApiError } from './http';
-import { type AuthenticatedUser } from './firebase-rest';
-import { creditScanPointsForPayment } from './usage';
+import { ApiError } from './http.js';
+import { type AuthenticatedUser } from './firebase-rest.js';
+import { creditScanPointsForPayment } from './usage.js';
 
 export const scanPointTiers = [
   { id: 'starter', name: 'Starter', price: '1.99', points: 2 },

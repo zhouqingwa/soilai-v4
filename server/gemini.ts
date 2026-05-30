@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { ApiError } from './http';
+import { ApiError } from './http.js';
 
 type AnalyzePlantInput = {
   base64Data?: string;

@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import { ApiError } from './http';
+import { ApiError } from './http.js';
 
 export type RequestContext = {
   headers?: Record<string, string | string[] | undefined>;

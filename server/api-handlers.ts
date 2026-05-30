@@ -1,12 +1,12 @@
-import { assertString, ApiError } from './http';
+import { assertString, ApiError } from './http.js';
 import {
   getClientIp,
   getOptionalAuthenticatedUser,
   requireAuthenticatedUser,
   type RequestContext,
-} from './firebase-rest';
-import { enforceMemoryLimit, msUntilUtcMidnight } from './memory-limit';
-import { consumeProPoint, getUnlockedProForScan, recordMetricEvent, reserveBasicScan, saveUnlockedProForScan } from './usage';
+} from './firebase-rest.js';
+import { enforceMemoryLimit, msUntilUtcMidnight } from './memory-limit.js';
+import { consumeProPoint, getUnlockedProForScan, recordMetricEvent, reserveBasicScan, saveUnlockedProForScan } from './usage.js';
 
 const maxImagePayloadLength = 11 * 1024 * 1024;
 const allowedImageMimeTypes = new Set([
@@ -53,7 +53,7 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
 
   if (wantsFullPro) {
     const user = await requireAuthenticatedUser(context);
-    const { analyzeFullProPlant } = await import('./gemini');
+    const { analyzeFullProPlant } = await import('./gemini.js');
     const pointReservation = await consumeProPoint(user, { recordScan: true });
     try {
       return await analyzeFullProPlant({
@@ -84,7 +84,7 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
 
     const pointReservation = await consumeProPoint(user);
     try {
-      const { analyzePlant } = await import('./gemini');
+      const { analyzePlant } = await import('./gemini.js');
       const result = await analyzePlant({
         base64Data,
         mimeType,
@@ -105,7 +105,7 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
   const user = await getOptionalAuthenticatedUser(context);
   const basicReservation = await reserveBasicScan(user, clientIp);
   try {
-    const { analyzePlant } = await import('./gemini');
+    const { analyzePlant } = await import('./gemini.js');
     return await analyzePlant({
       base64Data,
       mimeType,
@@ -123,7 +123,7 @@ export const handleGenerateIllustration = async (body: any, context: RequestCont
   enforceMemoryLimit(`api:illustration:${user.uid}`, 15, 15 * 60 * 1000, 'Too many illustration requests. Please try again later.');
 
   const species = sanitizeShortText(body?.species, 200);
-  const { generateIllustration } = await import('./gemini');
+  const { generateIllustration } = await import('./gemini.js');
   return generateIllustration({ species });
 };
 
@@ -132,7 +132,7 @@ export const handleGenerateCareGuide = async (body: any, context: RequestContext
   enforceMemoryLimit(`api:care-guide:${user.uid}:${new Date().toISOString().split('T')[0]}`, 10, msUntilUtcMidnight(), 'Too many care guide requests today.');
 
   const plantName = assertString(body?.plantName, 'plantName', 200);
-  const { generateCareGuide } = await import('./gemini');
+  const { generateCareGuide } = await import('./gemini.js');
   return generateCareGuide({ plantName });
 };
 
@@ -155,13 +155,13 @@ export const handleTrackEvent = async (body: any, context: RequestContext) => {
 export const handleCreatePayPalOrder = async (body: any, context: RequestContext) => {
   const user = await requireAuthenticatedUser(context);
   enforceMemoryLimit(`api:paypal-create:${user.uid}`, 20, 15 * 60 * 1000, 'Too many checkout attempts. Please try again later.');
-  const { createPayPalOrder } = await import('./paypal');
+  const { createPayPalOrder } = await import('./paypal.js');
   return createPayPalOrder(user, body?.tierId);
 };
 
 export const handleCapturePayPalOrder = async (body: any, context: RequestContext) => {
   const user = await requireAuthenticatedUser(context);
   enforceMemoryLimit(`api:paypal-capture:${user.uid}`, 20, 15 * 60 * 1000, 'Too many checkout attempts. Please try again later.');
-  const { capturePayPalOrder } = await import('./paypal');
+  const { capturePayPalOrder } = await import('./paypal.js');
   return capturePayPalOrder(user, body?.orderId, body?.tierId);
 };

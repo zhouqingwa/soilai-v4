@@ -14,8 +14,8 @@ import {
   handleGenerateCareGuide,
   handleGenerateIllustration,
   handleTrackEvent,
-} from "./server/api-handlers";
-import { toPublicError } from "./server/http";
+} from "./server/api-handlers.js";
+import { toPublicError } from "./server/http.js";
 
 const DEFAULT_SITE_URL = "https://www.soilai.app";
 const DEFAULT_OG_IMAGE = "/og-image.svg";
