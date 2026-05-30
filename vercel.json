@@ -20,7 +20,16 @@
       ]
     },
     {
-      "source": "/:file(icon-192.png|icon-512.png|apple-touch-icon.png|favicon.ico|favicon.svg|my-monstera.webp|frog.webp|chick.webp|squirrel.webp|fox.webp)",
+      "source": "/:file(favicon.ico|favicon.svg|apple-touch-icon.png|icon-192.png|icon-512.png)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/:file(my-monstera.webp|frog.webp|chick.webp|squirrel.webp|fox.webp)",
       "headers": [
         {
           "key": "Cache-Control",
