@@ -1032,13 +1032,15 @@ export default function App() {
         </div>
 
         {/* Central Visual */}
-        <div className={`relative w-full group mx-auto ${
+        <div className={`relative group mx-auto ${
           previewUrl
-            ? 'max-w-sm sm:max-w-md aspect-[4/5] md:aspect-[9/10] mb-8 mt-4'
-            : 'max-w-[20rem] sm:max-w-[22rem] md:max-w-sm aspect-[941/1672] mb-10 mt-4'
+            ? 'w-fit max-w-[calc(100vw-2rem)] sm:max-w-md mb-8 mt-4'
+            : 'w-full max-w-[20rem] sm:max-w-[22rem] md:max-w-sm aspect-[941/1672] mb-10 mt-4'
         }`}>
           {/* Glow effect */}
-          <div className="absolute inset-0 bg-white/40 rounded-xl blur-3xl scale-95 opacity-50 group-hover:opacity-80 transition-opacity"></div>
+          {!previewUrl && (
+            <div className="absolute inset-0 bg-white/40 rounded-xl blur-3xl scale-95 opacity-50 group-hover:opacity-80 transition-opacity"></div>
+          )}
 
           {/* Image Container */}
           <div onDragOver={handleDragOver}
@@ -1053,7 +1055,11 @@ export default function App() {
                 openPhotoPicker();
               }
             }}
-            className={`relative block w-full h-full bg-white/40 rounded-2xl overflow-hidden border border-forest-deep/10 shadow-sm cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : 'hover:border-forest-deep/20'} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''}`}
+            className={`relative block overflow-hidden border border-forest-deep/10 shadow-sm cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : 'hover:border-forest-deep/20'} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''} ${
+              previewUrl
+                ? 'w-fit max-w-full rounded-[1.25rem] bg-transparent'
+                : 'w-full h-full rounded-2xl bg-white/40'
+            }`}
           >
             <input
               ref={uploadInputRef}
@@ -1081,7 +1087,7 @@ export default function App() {
               <img
                 src={previewUrl}
                 alt="Uploaded plant"
-                className={`w-full h-full object-contain bg-[#F7F4EC] p-2 transition-all duration-700 ${isLoading ? 'scale-105 blur-md opacity-40' : 'opacity-95 group-hover:opacity-90'}`}
+                className={`block h-auto w-auto max-h-[68svh] max-w-full object-contain transition-all duration-700 ${isLoading ? 'scale-105 blur-md opacity-40' : 'opacity-100 md:group-hover:opacity-95'}`}
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -1107,7 +1113,7 @@ export default function App() {
 
             {/* Change Photo Overlay (when image is uploaded) */}
             {previewUrl && !isLoading && !isPreparingImage && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-forest-deep/30 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 backdrop-blur-xs px-6">
+              <div className="absolute inset-0 z-10 hidden flex-col items-center justify-center bg-forest-deep/25 opacity-0 transition-opacity duration-300 backdrop-blur-xs px-6 md:flex md:group-hover:opacity-100 md:focus-within:opacity-100">
                 <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center mb-3 shadow-md transform transition-transform duration-300 scale-95 group-hover:scale-100">
                   <Camera className="w-5 h-5 text-forest-deep" strokeWidth={1.8} />
                 </div>
@@ -1299,7 +1305,7 @@ export default function App() {
                 {/* High-end Dappled Shadow Hover Effect - Realistic Leaf Shadow */}
                 {previewUrl && (
                   <div
-                    className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl mix-blend-multiply"
+                    className="absolute inset-0 hidden pointer-events-none overflow-hidden rounded-xl mix-blend-multiply md:block"
                     style={{
                       WebkitMaskImage: 'radial-gradient(ellipse 65% 80% at 50% 50%, transparent 25%, black 75%)',
                       maskImage: 'radial-gradient(ellipse 65% 80% at 50% 50%, transparent 25%, black 75%)'
