@@ -19,7 +19,7 @@ const todayKey = () => new Date().toISOString().split('T')[0];
 const toNumber = (value: unknown, fallback = 0) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
-const isUnlimitedRole = (role: unknown) => role === 'admin' || role === 'premium';
+const isUnlimitedRole = (role: unknown) => role === 'admin';
 const freeBasicDailyLimit = 1;
 
 const getGuestLimitPath = (clientIp: string) => {

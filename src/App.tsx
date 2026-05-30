@@ -496,7 +496,7 @@ export default function App() {
       }
     } else if (user) {
       const currentDailyScans = userProfile?.lastScanDate === today ? (userProfile?.dailyScans || 0) : 0;
-      const hasUnlimitedScans = userProfile?.role === 'admin' || userProfile?.role === 'premium';
+      const hasUnlimitedScans = userProfile?.role === 'admin';
       if (!hasUnlimitedScans && currentDailyScans >= FREE_BASIC_DAILY_LIMIT) {
         if ((userProfile?.scanPoints || 0) > 0) {
           setShowPaidScanModal(true);
@@ -777,7 +777,7 @@ export default function App() {
 
     const today = new Date().toISOString().split('T')[0];
     const currentDailyScans = userProfile?.lastScanDate === today ? (userProfile?.dailyScans || 0) : 0;
-    const hasUnlimitedScans = userProfile?.role === 'admin' || userProfile?.role === 'premium';
+    const hasUnlimitedScans = userProfile?.role === 'admin';
     if (!hasUnlimitedScans && currentDailyScans >= FREE_BASIC_DAILY_LIMIT) {
       return (userProfile?.scanPoints || 0) > 0 ? 'Use 1 Scan Point' : 'Get Scan Points';
     }
