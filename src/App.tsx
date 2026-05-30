@@ -1014,14 +1014,14 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              className="flex flex-1 flex-col items-center justify-center px-4 text-center max-w-4xl mx-auto w-full py-12 pb-32"
+              className="flex flex-1 flex-col items-center justify-start px-0 text-center max-w-4xl mx-auto w-full pt-0 pb-32 md:justify-center md:px-4 md:py-12"
             >
               <Helmet>
                 <title>Soil AI - Plant Roast & Care</title>
                 <meta name="description" content="Soil AI: Your AI-powered plant diagnosis & care guide. Identify sick plants, diagnose soil issues, and stop killing your plants with a side of brutal honesty." />
                 <link rel="canonical" href={APP_SITE_URL} />
               </Helmet>
-        <div className="mb-14 mt-4">
+        <div className="mb-14 mt-4 hidden md:block">
           <h1 className="text-forest-deep tracking-tight text-5xl md:text-6xl lg:text-[5.5rem] font-serif font-normal leading-tight mb-5">
             Stop guessing. <br />
             <span className="font-serif italic text-forest-deep text-5xl md:text-6xl lg:text-[6rem] tracking-tight block mt-1">Start diagnosing.</span>
@@ -1035,7 +1035,7 @@ export default function App() {
         <div className={`relative group mx-auto ${
           previewUrl
             ? 'w-fit max-w-[calc(100vw-2rem)] sm:max-w-md mb-8 mt-4'
-            : 'w-full max-w-[20rem] sm:max-w-[22rem] md:max-w-sm aspect-[941/1672] mb-10 mt-4'
+            : 'w-full max-w-none md:max-w-sm aspect-[941/1672] mb-10 mt-0 md:mt-4'
         }`}>
           {/* Glow effect */}
           {!previewUrl && (
@@ -1055,10 +1055,10 @@ export default function App() {
                 openPhotoPicker();
               }
             }}
-            className={`relative block overflow-hidden border border-forest-deep/10 shadow-sm cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : 'hover:border-forest-deep/20'} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''} ${
+            className={`relative block overflow-hidden cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : ''} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''} ${
               previewUrl
-                ? 'w-fit max-w-full rounded-[1.25rem] bg-transparent'
-                : 'w-full h-full rounded-2xl bg-white/40'
+                ? 'w-fit max-w-full rounded-[1.25rem] border border-forest-deep/10 bg-transparent shadow-sm hover:border-forest-deep/20'
+                : 'w-full h-full rounded-none border-0 bg-transparent shadow-none'
             }`}
           >
             <input
@@ -1091,7 +1091,7 @@ export default function App() {
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={`w-full h-full relative overflow-hidden bg-forest-deep/5 transition-all duration-700 pointer-events-none flex flex-col ${isLoading ? 'scale-110 blur-md opacity-40' : 'group-hover:scale-[1.02]'}`}>
+              <div className={`w-full h-full relative overflow-hidden bg-transparent transition-all duration-700 pointer-events-none flex flex-col ${isLoading ? 'scale-110 blur-md opacity-40' : 'md:group-hover:scale-[1.02]'}`}>
                 <DefaultPlantBackdrop />
               </div>
             )}
