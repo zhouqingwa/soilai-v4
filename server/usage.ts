@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import * as crypto from 'node:crypto';
 import { ApiError } from './http';
 import { enforceMemoryLimit, msUntilUtcMidnight, releaseMemoryLimit } from './memory-limit';
 import {
