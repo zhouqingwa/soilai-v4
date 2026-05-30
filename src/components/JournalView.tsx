@@ -56,6 +56,10 @@ const handleImageError = (event: SyntheticEvent<HTMLImageElement>) => {
 };
 
 const isPhotoCover = (article: Article) => /\.(png|jpe?g|webp|avif)$/i.test(getArticleCover(article));
+const getWebpCover = (cover: string) =>
+  cover.startsWith('/journal/covers/') && /\.jpe?g$/i.test(cover)
+    ? cover.replace(/\.jpe?g$/i, '.webp')
+    : null;
 
 const getVisualIconKey = (article: Article): JournalIconKey => {
   const haystack = [article.category, article.title, article.excerpt, ...article.tags, ...(article.keywords || [])]
@@ -136,6 +140,7 @@ const JournalVisual = ({ article, compact = false, mini = false, hero = false }:
 
 const ArticleCover = ({ article, compact = false, mini = false, hero = false }: { article: Article; compact?: boolean; mini?: boolean; hero?: boolean }) => {
   const cover = getArticleCover(article);
+  const webpCover = getWebpCover(cover);
 
   if (!isPhotoCover(article)) {
     return <JournalVisual article={article} compact={compact} mini={mini} hero={hero} />;
@@ -143,13 +148,17 @@ const ArticleCover = ({ article, compact = false, mini = false, hero = false }: 
 
   if (mini) {
     return (
-      <img
-        src={cover}
-        alt={getArticleCoverAlt(article)}
-        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-        loading="lazy"
-        onError={handleImageError}
-      />
+      <picture className="block h-full w-full">
+        {webpCover && <source srcSet={webpCover} type="image/webp" />}
+        <img
+          src={cover}
+          alt={getArticleCoverAlt(article)}
+          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+          loading="lazy"
+          decoding="async"
+          onError={handleImageError}
+        />
+      </picture>
     );
   }
 
@@ -161,13 +170,18 @@ const ArticleCover = ({ article, compact = false, mini = false, hero = false }: 
           ? 'aspect-[16/7] rounded-[1.2rem] mb-5'
           : 'aspect-[16/8] rounded-[1.5rem] mb-6'
     } bg-[#f1f3ee]`}>
-      <img
-        src={cover}
-        alt={getArticleCoverAlt(article)}
-        loading={hero ? 'eager' : 'lazy'}
-        className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
-        onError={handleImageError}
-      />
+      <picture className="block h-full w-full">
+        {webpCover && <source srcSet={webpCover} type="image/webp" />}
+        <img
+          src={cover}
+          alt={getArticleCoverAlt(article)}
+          loading={hero ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={hero ? 'high' : 'auto'}
+          className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
+          onError={handleImageError}
+        />
+      </picture>
       <div className="absolute inset-0 bg-gradient-to-t from-[#17261e]/45 via-transparent to-white/8" />
       {!hero && (
         <>

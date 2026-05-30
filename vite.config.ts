@@ -92,6 +92,43 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+
+            if (id.includes('/node_modules/@firebase/') || id.includes('/node_modules/firebase/')) return 'firebase';
+            if (id.includes('/node_modules/framer-motion/') || id.includes('/node_modules/motion/')) return 'motion';
+            if (id.includes('/node_modules/lucide-react/')) return 'icons';
+            if (id.includes('/node_modules/@paypal/')) return 'paypal';
+            if (
+              id.includes('/node_modules/react-markdown/') ||
+              id.includes('/node_modules/remark-') ||
+              id.includes('/node_modules/micromark') ||
+              id.includes('/node_modules/unified/') ||
+              id.includes('/node_modules/mdast') ||
+              id.includes('/node_modules/hast') ||
+              id.includes('/node_modules/vfile/')
+            ) {
+              return 'markdown';
+            }
+            if (id.includes('/node_modules/html-to-image/') || id.includes('/node_modules/react-qr-code/')) return 'share-vendor';
+            if (
+              id.includes('/node_modules/react/') ||
+              id.includes('/node_modules/react-dom/') ||
+              id.includes('/node_modules/react-router-dom/') ||
+              id.includes('/node_modules/react-helmet-async/')
+            ) {
+              return 'react-vendor';
+            }
+
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

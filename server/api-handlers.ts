@@ -103,13 +103,18 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
   }
 
   const user = await getOptionalAuthenticatedUser(context);
-  await reserveBasicScan(user, clientIp);
-  return analyzePlant({
-    base64Data,
-    mimeType,
-    userQuestion,
-    isPro: false,
-  });
+  const basicReservation = await reserveBasicScan(user, clientIp);
+  try {
+    return await analyzePlant({
+      base64Data,
+      mimeType,
+      userQuestion,
+      isPro: false,
+    });
+  } catch (error) {
+    await basicReservation.refund();
+    throw error;
+  }
 };
 
 export const handleGenerateIllustration = async (body: any, context: RequestContext) => {

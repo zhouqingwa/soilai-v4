@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { ApiError } from './http';
 
 type AnalyzePlantInput = {
   base64Data?: string;
@@ -21,7 +22,11 @@ const getGeminiBaseUrl = () => {
   if (!baseUrl) return undefined;
 
   if (process.env.NODE_ENV === 'production' && !baseUrl.startsWith('https://')) {
-    throw new Error('GEMINI_BASE_URL must use https in production.');
+    throw new ApiError(
+      503,
+      'ai_config_invalid',
+      'The AI service is not configured correctly. Please check the API settings and try again.'
+    );
   }
 
   return baseUrl;
@@ -30,7 +35,11 @@ const getGeminiBaseUrl = () => {
 const getGeminiClient = () => {
   const apiKey = process.env.CUSTOM_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured.');
+    throw new ApiError(
+      503,
+      'ai_config_missing',
+      'The AI service is missing its API key. Please add the Gemini API settings and restart the server.'
+    );
   }
 
   const baseUrl = getGeminiBaseUrl();
@@ -39,6 +48,42 @@ const getGeminiClient = () => {
     apiKey,
     ...(baseUrl ? { httpOptions: { baseUrl } } : {})
   });
+};
+
+const isGeminiNetworkError = (error: unknown) => {
+  const value = error as any;
+  const details = [
+    value?.name,
+    value?.message,
+    value?.code,
+    value?.cause?.name,
+    value?.cause?.message,
+    value?.cause?.code,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return /fetch failed|connecttimeouterror|und_err_connect_timeout|etimedout|econnrefused|econnreset|enotfound|eai_again/i.test(details);
+};
+
+const withGeminiErrorHandling = async <T>(operation: () => Promise<T>) => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    if (isGeminiNetworkError(error)) {
+      throw new ApiError(
+        503,
+        'ai_unavailable',
+        'The AI service is not reachable right now. Check the Gemini API relay settings, then try again.'
+      );
+    }
+
+    throw error;
+  }
 };
 
 const parseGeminiJson = (text?: string) => {
@@ -175,7 +220,7 @@ CRITICAL: Return strictly JSON.
 
 User's specific question: ${userQuestion || 'No specific question provided.'}`;
 
-  const response = await ai.models.generateContent({
+  const response = await withGeminiErrorHandling(() => ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: {
       parts: [
@@ -194,7 +239,7 @@ User's specific question: ${userQuestion || 'No specific question provided.'}`;
       responseMimeType: 'application/json',
       temperature: 0.0,
     },
-  });
+  }));
 
   const parsedResponse = parseGeminiJson(response.text);
   return parsedResponse;
@@ -230,7 +275,7 @@ export const analyzeFullProPlant = async ({ base64Data, mimeType, userQuestion }
 export const generateIllustration = async ({ species }: GenerateIllustrationInput) => {
   try {
     const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
+    const response = await withGeminiErrorHandling(() => ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
@@ -244,7 +289,7 @@ export const generateIllustration = async ({ species }: GenerateIllustrationInpu
           aspectRatio: '1:1',
         },
       },
-    });
+    }));
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
@@ -267,7 +312,7 @@ export const generateCareGuide = async ({ plantName }: GenerateCareGuideInput) =
   }
 
   const ai = getGeminiClient();
-  const response = await ai.models.generateContent({
+  const response = await withGeminiErrorHandling(() => ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Provide care guide information for the plant: ${plantName}. Keep the description short (1-2 sentences).`,
     config: {
@@ -283,7 +328,7 @@ export const generateCareGuide = async ({ plantName }: GenerateCareGuideInput) =
         required: ['difficulty', 'desc', 'bgColor', 'textColor'],
       },
     },
-  });
+  }));
 
   return parseGeminiJson(response.text);
 };

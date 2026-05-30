@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Flower, Camera, Book, Sprout, User } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { User } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 
 interface HeaderProps {
   user: any;
@@ -18,14 +18,13 @@ export const Header = ({
   setIsProfileOpen,
 }: HeaderProps) => {
   const location = useLocation();
-  const navigate = useNavigate();
   const path = location.pathname;
 
   return (
     <>
       <header className="flex items-center justify-between px-4 md:px-12 py-4 md:py-6 sticky top-0 md:relative z-[100] pointer-events-none md:pointer-events-auto">
         <Link to="/" className="flex items-center gap-2 group cursor-pointer py-2 pointer-events-auto transition-all">
-          <Flower className="w-6 h-6 text-forest-deep" />
+          <img src="/favicon.svg" alt="" aria-hidden="true" className="h-6 w-6" />
           <h2 className="text-forest-deep text-[1.1rem] leading-none font-semibold tracking-tight uppercase mt-0.5">Soil AI</h2>
         </Link>
         <div className="flex items-center gap-2 md:gap-8 pointer-events-auto">

@@ -17,29 +17,6 @@ export type JournalBrowseGroup = {
   categoryMatches?: string[];
 };
 
-const journalCoverSlugs = new Set([
-  'why-are-my-plant-leaves-turning-yellow',
-  'monstera-leaves-not-splitting',
-  'why-are-the-tips-of-my-plant-leaves-turning-brown',
-  'why-are-my-plant-leaves-drooping-or-wilting',
-  'how-to-get-rid-of-fungus-gnats',
-  'white-spots-on-plant-leaves',
-  'how-to-save-a-plant-from-root-rot',
-  'overwatered-plant-signs-and-fixes',
-  'underwatered-plant-signs-and-recovery',
-  'how-often-should-i-water-houseplants',
-  'why-is-my-plant-losing-leaves',
-  'why-are-my-plant-leaves-curling',
-  'black-spots-on-plant-leaves',
-  'white-mold-on-houseplant-soil',
-  'how-to-get-rid-of-spider-mites-on-houseplants',
-  'why-is-my-plant-leggy',
-  'why-are-my-pothos-leaves-turning-yellow',
-  'why-is-my-peace-lily-drooping',
-  'why-are-my-calathea-leaves-curling',
-  'why-is-my-snake-plant-falling-over',
-]);
-
 const generatedPhotoCoverSlugs = new Set([
   'why-are-my-plant-leaves-turning-yellow',
   'monstera-leaves-not-splitting',
@@ -199,10 +176,6 @@ export const getArticleCover = (article: Article) => {
     return article.imageUrl;
   }
 
-  if (journalCoverSlugs.has(slug)) {
-    return `/journal/covers/${slug}.svg`;
-  }
-
   return article.imageUrl || '/og-image.svg';
 };
 
@@ -210,10 +183,6 @@ export const getArticleCoverAlt = (article: Article) => {
   const slug = getArticleSlug(article);
   if (!article.imageUrl?.startsWith('/') && generatedPhotoCoverSlugs.has(slug)) {
     return `Photorealistic plant care cover image for ${article.title}`;
-  }
-
-  if (!article.imageUrl?.startsWith('/') && journalCoverSlugs.has(slug)) {
-    return `Editorial plant care illustration for ${article.title}`;
   }
 
   return article.imageAlt || article.title;

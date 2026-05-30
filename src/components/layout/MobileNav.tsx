@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Flower, Book, Sprout } from 'lucide-react';
+import { Camera, Book, Sprout } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 interface MobileNavProps {

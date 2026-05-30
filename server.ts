@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import type { Request } from "express";
 import path from "path";
@@ -43,6 +44,8 @@ const escapeHtml = (value: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+
+const ASSET_REQUEST_PATTERN = /\.(?:js|css|png|jpe?g|webp|avif|svg|ico|xml|txt|json|webmanifest|map|woff2?|ttf|otf)$/i;
 
 const getArticleDate = (article: Article, field: "publishedAt" | "updatedAt" = "publishedAt") => {
   const value = article[field] || article.createdAt;
@@ -328,7 +331,19 @@ async function startServer() {
     const fs = await import("fs/promises");
 
     // Serve static files (except index.html)
-    app.use(express.static(distPath, { index: false }));
+    app.use(express.static(distPath, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          return;
+        }
+
+        if (/\.(?:png|jpe?g|webp|avif|svg|ico|woff2?|ttf|otf)$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }));
 
     // Fallback all routes to index.html
     const indexHtmlPath = path.join(distPath, 'index.html');
@@ -336,6 +351,11 @@ async function startServer() {
     // Express 5 routing handles wildcard with * or just catch-all.
     app.get('*', async (req, res) => {
       try {
+        if (ASSET_REQUEST_PATTERN.test(req.path)) {
+          res.status(404).send("Not Found");
+          return;
+        }
+
         if (req.path === '/journal' || req.path === '/journal/' || req.path.startsWith('/journal/')) {
           const journalPath = req.path.replace(/^\/+|\/+$/g, '') || 'journal';
           if (/^journal(?:\/[A-Za-z0-9_-]+)?$/.test(journalPath)) {

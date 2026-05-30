@@ -4,29 +4,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useMemo } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Camera, Flower, Image as ImageIcon, User, Loader2, Copy, Check, Menu, X, ArrowUpRight, Search, Book, ShoppingBag, ChevronDown, Droplets, Sun, Thermometer, Sprout, Skull, Ghost, Share2, Crown, Leaf, ArrowLeft, MoreHorizontal, Zap } from 'lucide-react';
-import Markdown from 'react-markdown';
-import { motion, useScroll, useTransform, useSpring, useMotionValueEvent, AnimatePresence } from 'framer-motion';
+import { Camera, Flower, Image as ImageIcon, User, Loader2, Copy, Check, Menu, X, ArrowUpRight, Search, Book, ShoppingBag, ChevronDown, Droplets, Sun, Thermometer, Sprout, Skull, Share2, Crown, Leaf, ArrowLeft, MoreHorizontal, Zap, AlertTriangle, RotateCcw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Loader from './components/Loader';
-import JournalView from './components/JournalView';
-import HistoryView from './components/HistoryView';
-import AdminDashboard from './components/AdminDashboard';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { MobileNav } from './components/layout/MobileNav';
-import { LimitModal } from './components/modals/LimitModal';
-import { ProfileModal } from './components/modals/ProfileModal';
-import { PricingModal } from './components/modals/PricingModal';
-import { PaywallModal } from './components/modals/PaywallModal';
-import { ShareModal } from './components/modals/ShareModal';
-import { MarkdownResult } from './components/MarkdownResult';
-import { plantsData as defaultPlantsData } from './data/plants';
+import { DefaultPlantBackdrop } from './components/DefaultPlantBackdrop';
+import { DiagnosisTitle } from './components/DiagnosisTitle';
+import { RiskBadge } from './components/RiskBadge';
 import { auth, db, signInWithGoogle, logOut } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, getDocs, query, orderBy, getDocFromServer, limit, onSnapshot, where } from 'firebase/firestore';
+
+const LazyMarkdownResult = lazy(() => import('./components/MarkdownResult').then(module => ({ default: module.MarkdownResult })));
+const JournalView = lazy(() => import('./components/JournalView'));
+const HistoryView = lazy(() => import('./components/HistoryView'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const CareGuide = lazy(() => import('./components/CareGuide'));
+const LimitModal = lazy(() => import('./components/modals/LimitModal').then(module => ({ default: module.LimitModal })));
+const ProfileModal = lazy(() => import('./components/modals/ProfileModal').then(module => ({ default: module.ProfileModal })));
+const PricingModal = lazy(() => import('./components/modals/PricingModal').then(module => ({ default: module.PricingModal })));
+const PaywallModal = lazy(() => import('./components/modals/PaywallModal').then(module => ({ default: module.PaywallModal })));
+const ShareModal = lazy(() => import('./components/modals/ShareModal').then(module => ({ default: module.ShareModal })));
+
+const APP_SITE_URL = 'https://www.soilai.app';
+
+const RouteFallback = () => (
+  <div className="flex min-h-[50vh] items-center justify-center">
+    <Loader />
+  </div>
+);
+
+const MarkdownResult = ({ content }: { content?: string }) => (
+  <Suspense fallback={<span>{content || ''}</span>}>
+    <LazyMarkdownResult content={content || ''} />
+  </Suspense>
+);
 
 enum OperationType {
   CREATE = 'create',
@@ -128,6 +145,25 @@ const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
   return data as T;
 };
 
+const getAnalysisErrorMessage = (error: unknown) => {
+  const code = (error as any)?.code;
+  if (code === 'ai_unavailable') {
+    return 'The AI service is not reachable right now. Check the Gemini API relay settings, then try again.';
+  }
+  if (code === 'ai_config_missing' || code === 'ai_config_invalid') {
+    return 'The AI service is not configured correctly yet. Add the Gemini API settings, restart the server, then try again.';
+  }
+
+  const rawMessage = error instanceof Error ? error.message : String(error || '');
+  const message = rawMessage
+    .replace(/\s+/g, ' ')
+    .replace(/\.\.+/g, '.')
+    .trim();
+
+  if (!message) return 'The analysis could not be completed. Please try again.';
+  return /please try again\.?$/i.test(message) ? message : `${message} Please try again.`;
+};
+
 import { trackEvent } from './lib/analytics';
 
 export default function App() {
@@ -177,6 +213,7 @@ export default function App() {
   const [isGardenLoading, setIsGardenLoading] = useState(true);
   const [gardenLoadError, setGardenLoadError] = useState(false);
   const [pendingScan, setPendingScan] = useState<any>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isUnlockingPro, setIsUnlockingPro] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savedScanId, setSavedScanId] = useState<string | null>(null);
@@ -352,12 +389,12 @@ export default function App() {
   }, [previewUrl]);
 
   useEffect(() => {
-    if (pendingScan && !isLoading && resultRef.current) {
+    if ((pendingScan || analysisError) && !isLoading && resultRef.current) {
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
-  }, [pendingScan, isLoading]);
+  }, [pendingScan, analysisError, isLoading]);
 
   const handleCopy = async () => {
     if (pendingScan) {
@@ -442,6 +479,7 @@ export default function App() {
     activeRequestRef.current = requestId;
 
     setPendingScan(null);
+    setAnalysisError(null);
     setIsLoading(true);
     try {
       trackEvent(isFullProScan ? 'paid_scan_attempt' : 'scan_attempt');
@@ -458,6 +496,7 @@ export default function App() {
       }
 
       setPendingScan(parsedResponse);
+      setAnalysisError(null);
       setIsSaved(false);
       setSavedScanId(null);
 
@@ -494,7 +533,6 @@ export default function App() {
     } catch (error) {
       if (activeRequestRef.current !== requestId) return;
       console.error('Error analyzing plant:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
       if ((error as any)?.status === 429 && !user) {
         setShowLimitModal(true);
         return;
@@ -515,13 +553,7 @@ export default function App() {
         setIsProfileOpen(true);
         return;
       }
-      setPendingScan({
-        basic: {
-          species: "Error",
-          risk: "N/A",
-          mainIssue: `An error occurred: ${errorMessage}. Please try again.`
-        }
-      });
+      setAnalysisError(getAnalysisErrorMessage(error));
     } finally {
       if (activeRequestRef.current === requestId) {
         setIsLoading(false);
@@ -584,6 +616,7 @@ export default function App() {
     activeRequestRef.current = 0;
     setIsLoading(false);
     setPendingScan(null);
+    setAnalysisError(null);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -599,6 +632,8 @@ export default function App() {
   };
 
   const processFile = async (file: File) => {
+    setAnalysisError(null);
+    setPendingScan(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -657,9 +692,12 @@ export default function App() {
     setImageData(null);
     setImageType(null);
     setPendingScan(null);
+    setAnalysisError(null);
   };
 
   const handleSampleImageClick = async (imageUrl: string) => {
+    setAnalysisError(null);
+    setPendingScan(null);
     setPreviewUrl(imageUrl);
     setIsLoading(true);
 
@@ -955,7 +993,7 @@ export default function App() {
               <Helmet>
                 <title>Soil AI - Plant Roast & Care</title>
                 <meta name="description" content="Soil AI: Your AI-powered plant diagnosis & care guide. Identify sick plants, diagnose soil issues, and stop killing your plants with a side of brutal honesty." />
-                <link rel="canonical" href={window.location.origin} />
+                <link rel="canonical" href={APP_SITE_URL} />
               </Helmet>
         <div className="mb-14 mt-4">
           <h1 className="text-forest-deep tracking-tight text-5xl md:text-6xl lg:text-[5.5rem] font-serif font-normal leading-tight mb-5">
@@ -1018,13 +1056,7 @@ export default function App() {
               />
             ) : (
               <div className={`w-full h-full relative overflow-hidden bg-forest-deep/5 transition-all duration-700 pointer-events-none flex flex-col ${isLoading ? 'scale-110 blur-md opacity-40' : 'group-hover:scale-[1.02]'}`}>
-                {/* Background Image */}
-                <img
-                  src="/my-monstera.png"
-                  alt="A close-up of a plant leaf for AI diagnosis"
-                  className="absolute inset-0 w-full h-full object-cover opacity-80 scale-105 blur-[2px] transition-opacity duration-700"
-                  referrerPolicy="no-referrer"
-                />
+                <DefaultPlantBackdrop />
               </div>
             )}
 
@@ -1310,7 +1342,49 @@ export default function App() {
         </motion.div>
 
         {/* Common Problems Gallery (Before Diagnosis) */}
-        {(!pendingScan || isLoading) && renderCommonProblems('animate-in fade-in duration-500')}
+        {((!pendingScan && !analysisError) || isLoading) && renderCommonProblems('animate-in fade-in duration-500')}
+
+        <AnimatePresence>
+          {analysisError && !isLoading && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, y: 20 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: 20 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              ref={resultRef}
+              className="w-full max-w-2xl mx-auto mt-12 rounded-3xl border border-red-900/15 bg-[#FFF8F6] shadow-xl overflow-hidden text-left"
+            >
+              <div className="p-6 sm:p-7">
+                <div className="flex items-start gap-4">
+                  <div className="w-11 h-11 rounded-2xl bg-red-100 text-red-800 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-5 h-5" strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-red-900/50 mb-2">Analysis paused</p>
+                    <h3 className="text-2xl sm:text-3xl font-serif text-forest-deep mb-3">The professor could not reach the lab</h3>
+                    <p className="text-sm sm:text-base leading-relaxed text-forest-deep/70">{analysisError}</p>
+                    <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={handleAnalyzeClick}
+                        disabled={!imageData}
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-forest-deep px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white transition-colors hover:bg-[#1C2E24] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Try Again
+                      </button>
+                      <button
+                        onClick={() => setAnalysisError(null)}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-forest-deep/15 bg-white px-5 py-3 text-xs font-semibold uppercase tracking-widest text-forest-deep transition-colors hover:bg-[#FAF8F5]"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* AI Response Inline Card */}
         <AnimatePresence>
@@ -1354,47 +1428,11 @@ export default function App() {
                       </h3>
                     )}
                     <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-forest-deep mb-2 leading-[1.1] tracking-tight">
-                      {(pendingScan?.basic?.species || pendingScan?.species) ? (
-                        (pendingScan.basic?.species || pendingScan.species).includes('(') ? (
-                          <>
-                            <div className="mb-2">{(pendingScan.basic?.species || pendingScan.species).split('(')[0].trim()}</div>
-                            <div className="text-2xl sm:text-3xl opacity-50 font-medium font-serif italic mt-1">({(pendingScan.basic?.species || pendingScan.species).split('(')[1]}</div>
-                          </>
-                        ) : (
-                          <div className="mb-1">{(pendingScan.basic?.species || pendingScan.species)}</div>
-                        )
-                      ) : (pendingScan ? 'System Notice' : 'Unknown Plant')}
+                      <DiagnosisTitle species={pendingScan?.basic?.species || pendingScan?.species} hasScan={Boolean(pendingScan)} />
                     </h2>
                   </div>
 
-                  <div className="flex flex-col items-center gap-2 z-10 shrink-0 sm:pr-4">
-                    {/* Badge Container */}
-                    <div className="w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0 -rotate-6 transform origin-bottom p-2 opacity-95 drop-shadow-md mb-1 flex items-center justify-center">
-                      {((pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'HEALTHY' || (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'LOW' || (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'NONE') && <img src="/frog.png" alt="Health" className="max-w-full max-h-full object-contain" />}
-                      {(pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'MODERATE' && <img src="/chick.png" alt="Moderate" className="max-w-full max-h-full object-contain" />}
-                      {(pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'HIGH' && <img src="/squirrel.png" alt="Severe" className="max-w-full max-h-full object-contain" />}
-                      {(pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'DEAD' && <img src="/fox.png" alt="Dead" className="max-w-full max-h-full object-contain" />}
-                      {(!(pendingScan?.basic?.risk || pendingScan?.risk) || (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'N/A') && <Ghost className="w-16 h-16 sm:w-20 sm:h-20 text-slate-300 mx-auto" />}
-                    </div>
-
-                    <div className="flex flex-col items-center leading-tight">
-                      <span className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-1 ${
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'DEAD' ? 'text-slate-500' :
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'N/A' ? 'text-slate-400' :
-                        'text-forest-deep/50'
-                      }`}>Risk Level</span>
-                      <span className={`text-2xl sm:text-3xl font-black uppercase tracking-wider ${
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'HIGH' ? 'text-red-600' :
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'MODERATE' ? 'text-amber-600' :
-                        ((pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'HEALTHY' || (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'LOW' || (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'NONE') ? 'text-emerald-500' :
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'DEAD' ? 'text-slate-800' :
-                        (pendingScan?.basic?.risk || pendingScan?.risk)?.trim().toUpperCase() === 'N/A' ? 'text-slate-400' :
-                        'text-emerald-600'
-                      }`}>
-                        {(pendingScan?.basic?.risk || pendingScan?.risk) || 'Unknown'}
-                      </span>
-                    </div>
-                  </div>
+                  <RiskBadge risk={pendingScan?.basic?.risk || pendingScan?.risk} />
                 </div>
 
                 {/* Diagnosis Summary */}
@@ -1688,7 +1726,25 @@ export default function App() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="flex-1 w-full"
             >
-              <JournalView />
+              <Suspense fallback={<RouteFallback />}>
+                <JournalView />
+              </Suspense>
+            </motion.div>
+          } />
+
+          {/* Care Guide View */}
+          <Route path="/guide" element={
+            <motion.div
+              key="guide"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="flex-1 w-full px-4 py-10"
+            >
+              <Suspense fallback={<RouteFallback />}>
+                <CareGuide />
+              </Suspense>
             </motion.div>
           } />
 
@@ -1702,18 +1758,20 @@ export default function App() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="flex-1 w-full"
             >
-              <HistoryView
-                user={user}
-                scans={gardenScans}
-                isLoading={isGardenLoading}
-                loadError={gardenLoadError}
-                onShare={(data) => {
-                  setPendingScan(data);
-                  setImageData(data.imageData);
-                  setImageType(data.imageType);
-                  setIsShareOpen(true);
-                }}
-              />
+              <Suspense fallback={<RouteFallback />}>
+                <HistoryView
+                  user={user}
+                  scans={gardenScans}
+                  isLoading={isGardenLoading}
+                  loadError={gardenLoadError}
+                  onShare={(data) => {
+                    setPendingScan(data);
+                    setImageData(data.imageData);
+                    setImageType(data.imageType);
+                    setIsShareOpen(true);
+                  }}
+                />
+              </Suspense>
             </motion.div>
           } />
 
@@ -1727,7 +1785,9 @@ export default function App() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="flex-1 w-full"
             >
-              <AdminDashboard user={user} userProfile={userProfile} />
+              <Suspense fallback={<RouteFallback />}>
+                <AdminDashboard user={user} userProfile={userProfile} />
+              </Suspense>
             </motion.div>
           } />
         </Routes>
@@ -1812,55 +1872,67 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <LimitModal
-        showLimitModal={showLimitModal}
-        setShowLimitModal={setShowLimitModal}
-        setIsProfileOpen={setIsProfileOpen}
-      />
+      <Suspense fallback={null}>
+        {showLimitModal && (
+          <LimitModal
+            showLimitModal={showLimitModal}
+            setShowLimitModal={setShowLimitModal}
+            setIsProfileOpen={setIsProfileOpen}
+          />
+        )}
 
-      <ProfileModal
-        isProfileOpen={isProfileOpen}
-        setIsProfileOpen={setIsProfileOpen}
-        user={user}
-        userProfile={userProfile}
-        logOut={logOut}
-        signInWithGoogle={signInWithGoogle}
-        onBuyPoints={() => setIsPricingModalOpen(true)}
-      />
+        {isProfileOpen && (
+          <ProfileModal
+            isProfileOpen={isProfileOpen}
+            setIsProfileOpen={setIsProfileOpen}
+            user={user}
+            userProfile={userProfile}
+            logOut={logOut}
+            signInWithGoogle={signInWithGoogle}
+            onBuyPoints={() => setIsPricingModalOpen(true)}
+          />
+        )}
 
-      <PricingModal
-        isOpen={isPricingModalOpen}
-        onClose={() => setIsPricingModalOpen(false)}
-        user={user}
-        onPointsAdded={(points) => {
-          setUserProfile((prev: any) => prev ? { ...prev, scanPoints: (prev.scanPoints || 0) + points } : prev);
-        }}
-      />
+        {isPricingModalOpen && (
+          <PricingModal
+            isOpen={isPricingModalOpen}
+            onClose={() => setIsPricingModalOpen(false)}
+            user={user}
+            onPointsAdded={(points) => {
+              setUserProfile((prev: any) => prev ? { ...prev, scanPoints: (prev.scanPoints || 0) + points } : prev);
+            }}
+          />
+        )}
 
-      <PaywallModal
-        isOpen={isPaywallOpen}
-        onClose={() => setIsPaywallOpen(false)}
-        onBuyPoints={() => {
-          setIsPaywallOpen(false);
-          setIsPricingModalOpen(true);
-        }}
-      />
+        {isPaywallOpen && (
+          <PaywallModal
+            isOpen={isPaywallOpen}
+            onClose={() => setIsPaywallOpen(false)}
+            onBuyPoints={() => {
+              setIsPaywallOpen(false);
+              setIsPricingModalOpen(true);
+            }}
+          />
+        )}
 
-      <ShareModal
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
-        plantData={pendingScan ? {
-          ...pendingScan,
-          species: (pendingScan.basic?.species || pendingScan.species) || 'Unknown Plant',
-          risk: (pendingScan.basic?.risk || pendingScan.risk) || 'Unknown',
-          summary: (pendingScan.basic?.mainIssue || pendingScan.summary) || '',
-          imageData: pendingScan.imageData || imageData || '',
-          imageType: pendingScan.imageType || imageType || 'image/jpeg',
-          originalImageData: pendingScan.originalImageData || imageData || '',
-          originalImageType: pendingScan.originalImageType || imageType || 'image/jpeg',
-          killerTitle: (pendingScan.proPreview?.killerTitle || pendingScan.killerTitle) || 'UNKNOWN ASSASSIN'
-        } : null}
-      />
+        {isShareOpen && (
+          <ShareModal
+            isOpen={isShareOpen}
+            onClose={() => setIsShareOpen(false)}
+            plantData={pendingScan ? {
+              ...pendingScan,
+              species: (pendingScan.basic?.species || pendingScan.species) || 'Unknown Plant',
+              risk: (pendingScan.basic?.risk || pendingScan.risk) || 'Unknown',
+              summary: (pendingScan.basic?.mainIssue || pendingScan.summary) || '',
+              imageData: pendingScan.imageData || imageData || '',
+              imageType: pendingScan.imageType || imageType || 'image/jpeg',
+              originalImageData: pendingScan.originalImageData || imageData || '',
+              originalImageType: pendingScan.originalImageType || imageType || 'image/jpeg',
+              killerTitle: (pendingScan.proPreview?.killerTitle || pendingScan.killerTitle) || 'UNKNOWN ASSASSIN'
+            } : null}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

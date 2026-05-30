@@ -35,6 +35,19 @@ const absoluteUrl = (pathOrUrl?: string) => {
 
 const getArticlePath = (article: Article) => `/journal/${article.slug || article.id}`;
 
+const getWebpCover = (cover: string) =>
+  cover.startsWith('/journal/covers/') && /\.jpe?g$/i.test(cover)
+    ? cover.replace(/\.jpe?g$/i, '.webp')
+    : null;
+
+const renderCoverPicture = (article: Article) => {
+  const cover = getArticleCover(article);
+  const webpCover = getWebpCover(cover);
+  const alt = escapeHtml(getArticleCoverAlt(article));
+
+  return `<picture>${webpCover ? `<source srcset="${webpCover}" type="image/webp" />` : ''}<img src="${cover}" alt="${alt}" loading="lazy" decoding="async" /></picture>`;
+};
+
 const getArticleDate = (article: Article, field: 'publishedAt' | 'updatedAt' = 'publishedAt') => {
   const value = article[field] || article.createdAt;
   if (typeof value === 'string') return new Date(value).toISOString();
@@ -149,6 +162,7 @@ const injectSeoTags = (
     '.prerender-journal h1{font-size:clamp(40px,8vw,76px);line-height:1.05;font-weight:300;margin:18px 0 22px}',
     '.prerender-journal h2,.prerender-journal h3{font-weight:400;line-height:1.2;margin:42px 0 14px}',
     '.prerender-journal p,.prerender-journal li{font-size:18px;color:rgba(36,56,45,.78)}',
+    '.prerender-journal picture{display:block}',
     '.prerender-journal img{width:100%;height:auto;border-radius:28px;margin:28px 0 18px;display:block}',
     '.prerender-journal__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px;margin-top:34px}',
     '.prerender-journal__card{border:1px solid rgba(125,143,105,.22);border-radius:24px;background:rgba(255,255,255,.62);overflow:hidden;text-decoration:none;color:#24382d}',
@@ -216,7 +230,7 @@ const articleJsonLd = (article: Article) => {
 const renderJournalIndex = (orderedArticles: Article[]) => {
   const cards = orderedArticles.map(article => `
     <a class="prerender-journal__card" href="${getArticlePath(article)}">
-      <img src="${getArticleCover(article)}" alt="${escapeHtml(getArticleCoverAlt(article))}" />
+      ${renderCoverPicture(article)}
       <div>
         <p class="prerender-journal__eyebrow">${escapeHtml(article.category || 'Guide')}</p>
         <h2>${escapeHtml(article.title)}</h2>
@@ -240,7 +254,7 @@ const renderArticle = (article: Article) => `
     <p class="prerender-journal__eyebrow">${escapeHtml(article.category || 'Plant care guide')} · ${escapeHtml(article.readTime || '5 min read')}</p>
     <h1>${escapeHtml(article.title)}</h1>
     <p>${escapeHtml(article.excerpt)}</p>
-    <img src="${getArticleCover(article)}" alt="${escapeHtml(getArticleCoverAlt(article))}" />
+    ${renderCoverPicture(article)}
     <article>${markdownToHtml(article.content)}</article>
   </main>
 `;

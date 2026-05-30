@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { ApiError } from './http';
-import { enforceMemoryLimit, msUntilUtcMidnight } from './memory-limit';
+import { enforceMemoryLimit, msUntilUtcMidnight, releaseMemoryLimit } from './memory-limit';
 import {
   type AuthenticatedUser,
   beginFirestoreTransaction,
@@ -31,20 +31,28 @@ const getGuestLimitPath = (clientIp: string) => {
   return `guest_limits/${digest}`;
 };
 
+type ScanReservation = {
+  refund: () => Promise<void>;
+};
+
 const reserveGuestBasicScan = async (clientIp: string, today: string) => {
+  const memoryKey = `guest:${clientIp}:${today}`;
+
   if (!hasServiceAccountCredentials()) {
     enforceMemoryLimit(
-      `guest:${clientIp}:${today}`,
+      memoryKey,
       freeBasicDailyLimit,
       msUntilUtcMidnight(),
       'You have reached your free scan limit for today. Please sign in to continue.'
     );
-    return;
+    return {
+      refund: async () => releaseMemoryLimit(memoryKey),
+    };
   }
 
   const transaction = await beginFirestoreTransaction();
+  const guestPath = getGuestLimitPath(clientIp);
   try {
-    const guestPath = getGuestLimitPath(clientIp);
     const docs = await getDocumentsInTransaction([guestPath], transaction);
     const guestDoc = decodeFirestoreDocument(docs.get(firestoreDocumentName(guestPath)));
     const existing = guestDoc?.data || {};
@@ -64,33 +72,48 @@ const reserveGuestBasicScan = async (clientIp: string, today: string) => {
         guestDoc?.updateTime ? { updateTime: guestDoc.updateTime } : { exists: false }
       ),
     ], transaction);
+
+    return {
+      refund: async () => {
+        try {
+          await commitFirestoreWrites([
+            buildIncrementWrite(guestPath, { count: -1 }),
+          ]);
+        } catch (error) {
+          console.error('Failed to refund guest Basic scan after model error:', error);
+        }
+      },
+    };
   } catch (error) {
     await rollbackFirestoreTransaction(transaction);
     throw error;
   }
 };
 
-export const reserveBasicScan = async (user: AuthenticatedUser | null, clientIp: string) => {
+export const reserveBasicScan = async (user: AuthenticatedUser | null, clientIp: string): Promise<ScanReservation> => {
   const today = todayKey();
 
   if (!user) {
-    await reserveGuestBasicScan(clientIp, today);
-    return;
+    return reserveGuestBasicScan(clientIp, today);
   }
+
+  const memoryKey = `user:${user.uid}:${today}`;
 
   if (!hasServiceAccountCredentials()) {
     enforceMemoryLimit(
-      `user:${user.uid}:${today}`,
+      memoryKey,
       freeBasicDailyLimit,
       msUntilUtcMidnight(),
       'You have reached your free Basic Diagnosis limit for today.'
     );
-    return;
+    return {
+      refund: async () => releaseMemoryLimit(memoryKey),
+    };
   }
 
   const transaction = await beginFirestoreTransaction();
+  const userPath = `users/${user.uid}`;
   try {
-    const userPath = `users/${user.uid}`;
     const docs = await getDocumentsInTransaction([userPath], transaction);
     const userDoc = decodeFirestoreDocument(docs.get(firestoreDocumentName(userPath)));
     const existing = userDoc?.data || {};
@@ -123,6 +146,21 @@ export const reserveBasicScan = async (user: AuthenticatedUser | null, clientIp:
         userDoc?.updateTime ? { updateTime: userDoc.updateTime } : { exists: false }
       ),
     ], transaction);
+
+    return {
+      refund: async () => {
+        try {
+          await commitFirestoreWrites([
+            buildIncrementWrite(userPath, {
+              dailyScans: -1,
+              plantsScanned: -1,
+            }),
+          ]);
+        } catch (error) {
+          console.error('Failed to refund user Basic scan after model error:', error);
+        }
+      },
+    };
   } catch (error) {
     await rollbackFirestoreTransaction(transaction);
     throw error;

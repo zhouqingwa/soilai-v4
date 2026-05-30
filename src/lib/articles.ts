@@ -106,7 +106,7 @@ If the issue is mainly crispy brown edges, see [why plant leaf tips turn brown](
 ## Bottom Line
 
 Yellow leaves are not a diagnosis by themselves. They are a clue. Check the soil, light, roots, and pattern before doing anything heroic. Most plants recover once their watering and light conditions make sense again.`,
-    imageUrl: "/journal/yellow-leaves.jpg",
+    imageUrl: "/journal/covers/why-are-my-plant-leaves-turning-yellow.jpg",
     imageAlt: "Close-up of a yellowing leaf on a green houseplant",
     category: "Yellow Leaves",
     tags: ["yellow leaves", "overwatering", "underwatering", "plant care"],
@@ -195,7 +195,7 @@ No splits alone is not a crisis. Worry if the plant also has yellow leaves, blac
 ## Bottom Line
 
 If your Monstera has no holes, it probably needs more time, more light, or more support. Give it a bright spot, a climbing structure, and steady care. The plant will not become a fenestrated masterpiece overnight, but it can get there without you staring at it judgmentally every morning.`,
-    imageUrl: "/journal/monstera-fenestration.jpg",
+    imageUrl: "/journal/covers/monstera-leaves-not-splitting.jpg",
     imageAlt: "Close-up of a variegated Monstera leaf with split fenestrations",
     category: "Monstera Care",
     tags: ["monstera", "fenestration", "no holes"],
@@ -287,7 +287,7 @@ Brown tips usually start at the very end or edge of the leaf and feel dry. Brown
 ## Bottom Line
 
 Brown tips usually mean the plant is experiencing water stress, air stress, or mineral stress. Improve humidity, stabilize watering, flush the soil, and protect the plant from harsh drafts or heat. The old brown parts will not recover, but the new growth should look better.`,
-    imageUrl: "/journal/brown-leaf-tips.jpg",
+    imageUrl: "/journal/covers/why-are-the-tips-of-my-plant-leaves-turning-brown.jpg",
     imageAlt: "A houseplant leaf with dry brown edges and crispy tips",
     category: "Brown Spots",
     tags: ["brown tips", "crispy leaves", "humidity", "watering"],
@@ -384,7 +384,7 @@ Keep the soil lightly moist, avoid fertilizer for a few weeks, and give bright i
 ## Bottom Line
 
 Drooping leaves are a symptom, not a command to water. Dry soil means water. Wet soil means stop, inspect, and think. Once you identify which side of the moisture problem you are on, recovery becomes much easier.`,
-    imageUrl: "/journal/drooping-plant.jpg",
+    imageUrl: "/journal/covers/why-are-my-plant-leaves-drooping-or-wilting.jpg",
     imageAlt: "A wilting houseplant with drooping leaves on a windowsill",
     category: "Drooping",
     tags: ["drooping", "wilting", "underwatering", "overwatering"],
@@ -571,7 +571,7 @@ Keep leaves clean, avoid crowding plants, inspect new plants before placing them
 ## Bottom Line
 
 White spots are not one diagnosis. Powdery mildew is dusty and flat. Mealybugs are fuzzy and hide in crevices. Mineral residue wipes away. Identify the texture and location first, then treat the correct problem.`,
-    imageUrl: "/journal/mealybug-white-spots.jpg",
+    imageUrl: "/journal/covers/white-spots-on-plant-leaves.jpg",
     imageAlt: "Close-up of a white mealybug pest on a green plant leaf",
     category: "Other Guides",
     tags: ["white spots", "mealybugs", "powdery mildew", "pests", "disease"],

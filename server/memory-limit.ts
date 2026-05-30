@@ -41,3 +41,16 @@ export const enforceMemoryLimit = (key: string, max: number, windowMs: number, m
   bucket.count += 1;
   buckets.set(key, bucket);
 };
+
+export const releaseMemoryLimit = (key: string) => {
+  const bucket = buckets.get(key);
+  if (!bucket) return;
+
+  bucket.count = Math.max(0, bucket.count - 1);
+  if (bucket.count === 0) {
+    buckets.delete(key);
+    return;
+  }
+
+  buckets.set(key, bucket);
+};
