@@ -32,8 +32,31 @@ const getGuestLimitPath = (clientIp: string) => {
 };
 
 type ScanReservation = {
+  billing: {
+    channel: 'free-basic';
+    usedFreeScan: true;
+    actor: 'guest' | 'user';
+    dailyLimit: number;
+    dailyScansUsed: number;
+    remainingFreeScans: number;
+    lastScanDate: string;
+  };
   refund: () => Promise<void>;
 };
+
+const buildFreeBasicBilling = (
+  actor: 'guest' | 'user',
+  dailyScansUsed: number,
+  today: string
+): ScanReservation['billing'] => ({
+  channel: 'free-basic',
+  usedFreeScan: true,
+  actor,
+  dailyLimit: freeBasicDailyLimit,
+  dailyScansUsed,
+  remainingFreeScans: Math.max(0, freeBasicDailyLimit - dailyScansUsed),
+  lastScanDate: today,
+});
 
 const reserveGuestBasicScan = async (clientIp: string, today: string) => {
   const memoryKey = `guest:${clientIp}:${today}`;
@@ -46,6 +69,7 @@ const reserveGuestBasicScan = async (clientIp: string, today: string) => {
       'You have reached your free scan limit for today. Please sign in to continue.'
     );
     return {
+      billing: buildFreeBasicBilling('guest', freeBasicDailyLimit, today),
       refund: async () => releaseMemoryLimit(memoryKey),
     };
   }
@@ -74,6 +98,7 @@ const reserveGuestBasicScan = async (clientIp: string, today: string) => {
     ], transaction);
 
     return {
+      billing: buildFreeBasicBilling('guest', currentCount + 1, today),
       refund: async () => {
         try {
           await commitFirestoreWrites([
@@ -107,6 +132,7 @@ export const reserveBasicScan = async (user: AuthenticatedUser | null, clientIp:
       'You have reached your free Basic Diagnosis limit for today.'
     );
     return {
+      billing: buildFreeBasicBilling('user', freeBasicDailyLimit, today),
       refund: async () => releaseMemoryLimit(memoryKey),
     };
   }
@@ -148,6 +174,7 @@ export const reserveBasicScan = async (user: AuthenticatedUser | null, clientIp:
     ], transaction);
 
     return {
+      billing: buildFreeBasicBilling('user', currentDailyScans + 1, today),
       refund: async () => {
         try {
           await commitFirestoreWrites([
@@ -266,7 +293,16 @@ export const consumeProPoint = async (user: AuthenticatedUser, options: { record
       buildUpdateWrite(userPath, updateFields, { updateTime: userDoc.updateTime }),
     ], transaction);
 
+    const nextPlantsScanned = options.recordScan ? toNumber(existing?.plantsScanned) + 1 : undefined;
+
     return {
+      billing: {
+        channel: 'scan-point' as const,
+        usedScanPoint: true,
+        scanPointsRemaining: scanPoints - 1,
+        recordedScan: options.recordScan === true,
+        ...(typeof nextPlantsScanned === 'number' ? { plantsScanned: nextPlantsScanned } : {}),
+      },
       refund: async () => {
         try {
           await commitFirestoreWrites([

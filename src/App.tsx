@@ -120,6 +120,31 @@ const AMAZON_AFFILIATE_TAG = import.meta.env.VITE_AMAZON_AFFILIATE_TAG || 'YOUR_
 const FREE_BASIC_DAILY_LIMIT = 1;
 
 type AnalyzeMode = 'free-basic' | 'full-pro';
+type AnalysisErrorCopy = {
+  title: string;
+  message: string;
+  help?: string;
+};
+
+type ScanBilling = {
+  channel?: 'free-basic' | 'scan-point';
+  usedFreeScan?: boolean;
+  usedScanPoint?: boolean;
+  actor?: 'guest' | 'user';
+  dailyLimit?: number;
+  dailyScansUsed?: number;
+  remainingFreeScans?: number;
+  lastScanDate?: string;
+  scanPointsRemaining?: number;
+  recordedScan?: boolean;
+  plantsScanned?: number;
+  alreadyUnlocked?: boolean;
+  proUnlocked?: boolean;
+  fullProDiagnosis?: boolean;
+};
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
 
 const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -153,26 +178,74 @@ const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
   return data as T;
 };
 
-const getAnalysisErrorMessage = (error: unknown) => {
-  const code = (error as any)?.code;
-  if (code === 'network_failed') {
-    return 'The upload did not reach the lab. The photo may be too large or the connection dropped; refresh the page and try again with Wi-Fi or a smaller photo.';
-  }
-  if (code === 'ai_unavailable') {
-    return 'The AI service is not reachable right now. Check the Gemini API relay settings, then try again.';
-  }
-  if (code === 'ai_config_missing' || code === 'ai_config_invalid') {
-    return 'The AI service is not configured correctly yet. Add the Gemini API settings, restart the server, then try again.';
-  }
-
+const normalizeErrorMessage = (error: unknown) => {
   const rawMessage = error instanceof Error ? error.message : String(error || '');
-  const message = rawMessage
+  return rawMessage
     .replace(/\s+/g, ' ')
     .replace(/\.\.+/g, '.')
     .trim();
+};
 
-  if (!message) return 'The analysis could not be completed. Please try again.';
-  return /please try again\.?$/i.test(message) ? message : `${message} Please try again.`;
+const getAnalysisErrorCopy = (error: unknown): AnalysisErrorCopy => {
+  const code = (error as any)?.code;
+  const status = (error as any)?.status;
+
+  if (code === 'network_failed') {
+    return {
+      title: 'The upload did not reach the lab',
+      message: 'Your connection dropped before the photo reached SoilAI.',
+      help: 'Refresh the page, switch to Wi-Fi, or try again with a smaller photo.',
+    };
+  }
+  if (status === 413 || code === 'payload_too_large') {
+    return {
+      title: 'That photo is too large',
+      message: 'The plant photo is bigger than the scanner can safely upload.',
+      help: 'Choose a smaller JPG or PNG, or retake the photo a little farther away.',
+    };
+  }
+  if (status === 400 || code === 'invalid_request') {
+    return {
+      title: 'The lab rejected this sample',
+      message: normalizeErrorMessage(error) || 'This file could not be read as a plant photo.',
+      help: 'Use a normal JPG, PNG, WebP, HEIC, or HEIF image.',
+    };
+  }
+  if (code === 'ai_unavailable') {
+    return {
+      title: 'The professor could not reach the lab',
+      message: 'The AI relay did not respond in time.',
+      help: 'Check the Gemini relay settings in Vercel, then try again.',
+    };
+  }
+  if (code === 'ai_config_missing' || code === 'ai_config_invalid') {
+    return {
+      title: 'The lab is missing its AI keys',
+      message: 'SoilAI cannot reach Gemini because the API settings are incomplete.',
+      help: 'Update CUSTOM_GEMINI_API_KEY and GEMINI_BASE_URL in Vercel, then redeploy.',
+    };
+  }
+  if (code === 'server_not_configured') {
+    return {
+      title: 'The secure counter is not configured',
+      message: 'SoilAI cannot safely deduct Scan Points on this server yet.',
+      help: 'Check the Firebase service account environment variable in Vercel.',
+    };
+  }
+  if (status === 500 || code === 'internal_error') {
+    return {
+      title: 'The analysis hit a server error',
+      message: 'The request reached SoilAI, but the server could not finish it.',
+      help: 'Try once more. If it repeats, check the latest Vercel function logs.',
+    };
+  }
+
+  const message = normalizeErrorMessage(error);
+  return {
+    title: 'The analysis could not be completed',
+    message: message || 'Something went wrong while analyzing this plant.',
+    help: /please try again\.?$/i.test(message) ? undefined : 'Please try again.',
+  };
 };
 
 import { trackEvent } from './lib/analytics';
@@ -258,7 +331,7 @@ export default function App() {
   const [isGardenLoading, setIsGardenLoading] = useState(true);
   const [gardenLoadError, setGardenLoadError] = useState(false);
   const [pendingScan, setPendingScan] = useState<any>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<AnalysisErrorCopy | null>(null);
   const [isUnlockingPro, setIsUnlockingPro] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savedScanId, setSavedScanId] = useState<string | null>(null);
@@ -534,6 +607,7 @@ export default function App() {
         userQuestion,
         ...(isFullProScan ? { mode: 'full-pro' } : {}),
       }) as any;
+      const billing = (parsedResponse?.billing || {}) as ScanBilling;
 
       if (activeRequestRef.current !== requestId) {
         console.log('Analysis cancelled by user');
@@ -553,6 +627,33 @@ export default function App() {
       if (user) {
         setUserProfile((prev: any) => {
           if (!prev) return null;
+
+          if (billing.channel === 'scan-point' || billing.usedScanPoint) {
+            const nextScanPoints = isFiniteNumber(billing.scanPointsRemaining)
+              ? billing.scanPointsRemaining
+              : Math.max(0, (prev.scanPoints || 0) - 1);
+            const nextPlantsScanned = billing.recordedScan
+              ? (isFiniteNumber(billing.plantsScanned) ? billing.plantsScanned : (prev.plantsScanned || 0) + 1)
+              : prev.plantsScanned;
+
+            return {
+              ...prev,
+              scanPoints: nextScanPoints,
+              plantsScanned: nextPlantsScanned,
+            };
+          }
+
+          if (billing.channel === 'free-basic' || billing.usedFreeScan) {
+            return {
+              ...prev,
+              dailyScans: isFiniteNumber(billing.dailyScansUsed)
+                ? billing.dailyScansUsed
+                : (prev.lastScanDate === today ? (prev.dailyScans || 0) + 1 : 1),
+              lastScanDate: billing.lastScanDate || today,
+              plantsScanned: (prev.plantsScanned || 0) + 1,
+            };
+          }
+
           if (isFullProScan) {
             return {
               ...prev,
@@ -570,10 +671,10 @@ export default function App() {
           };
         });
       } else {
-        const newCount = freeScansUsed + 1;
+        const newCount = isFiniteNumber(billing.dailyScansUsed) ? billing.dailyScansUsed : freeScansUsed + 1;
         setFreeScansUsed(newCount);
         localStorage.setItem('freeScansUsed', newCount.toString());
-        localStorage.setItem('lastScanDate', today);
+        localStorage.setItem('lastScanDate', billing.lastScanDate || today);
       }
     } catch (error) {
       if (activeRequestRef.current !== requestId) return;
@@ -591,6 +692,7 @@ export default function App() {
         return;
       }
       if ((error as any)?.status === 402) {
+        setUserProfile((prev: any) => prev ? { ...prev, scanPoints: 0 } : prev);
         setIsPaywallOpen(true);
         return;
       }
@@ -598,7 +700,7 @@ export default function App() {
         setIsProfileOpen(true);
         return;
       }
-      setAnalysisError(getAnalysisErrorMessage(error));
+      setAnalysisError(getAnalysisErrorCopy(error));
     } finally {
       if (activeRequestRef.current === requestId) {
         setIsLoading(false);
@@ -632,25 +734,40 @@ export default function App() {
         basicSummary: pendingScan?.basic?.summary || pendingScan?.summary,
         resultId: savedScanId || undefined
       }) as any;
+      const billing = (parsedResponse?.billing || {}) as ScanBilling;
 
       setPendingScan({
         ...pendingScan,
-        pro: parsedResponse.pro
+        pro: parsedResponse.pro,
+        billing: {
+          ...(pendingScan?.billing || {}),
+          ...billing,
+        },
       });
 
       // The server writes Pro content back to saved scans after point deduction.
 
-      if (!parsedResponse?.billing?.alreadyUnlocked) {
-        setUserProfile((prev: any) => prev ? { ...prev, scanPoints: Math.max(0, (prev.scanPoints || 0) - 1) } : null);
+      if (!billing.alreadyUnlocked) {
+        setUserProfile((prev: any) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            scanPoints: isFiniteNumber(billing.scanPointsRemaining)
+              ? billing.scanPointsRemaining
+              : Math.max(0, (prev.scanPoints || 0) - 1),
+          };
+        });
       }
     } catch (error) {
       console.error('Error unlocking pro plan:', error);
       if ((error as any)?.status === 402) {
+        setUserProfile((prev: any) => prev ? { ...prev, scanPoints: 0 } : prev);
         setIsPaywallOpen(true);
       } else if ((error as any)?.status === 401) {
         setIsProfileOpen(true);
       } else {
-        alert('Failed to unlock Pro Plan. Please try again.');
+        const copy = getAnalysisErrorCopy(error);
+        alert(`${copy.title}\n\n${copy.message}${copy.help ? `\n${copy.help}` : ''}`);
       }
     } finally {
       setIsUnlockingPro(false);
@@ -694,7 +811,11 @@ export default function App() {
       setImageType(preparedImage.mimeType);
     } catch (error) {
       console.error("Failed to compress image before analysis", error);
-      setAnalysisError(error instanceof Error ? error.message : 'This photo could not be prepared for upload. Please try a smaller image.');
+      setAnalysisError({
+        title: 'This photo could not be prepared',
+        message: error instanceof Error ? error.message : 'This photo could not be prepared for upload.',
+        help: 'Try a smaller JPG or PNG, or take a fresh photo from a little farther away.',
+      });
     } finally {
       setIsPreparingImage(false);
     }
@@ -1406,8 +1527,11 @@ export default function App() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-red-900/50 mb-2">Analysis paused</p>
-                    <h3 className="text-2xl sm:text-3xl font-serif text-forest-deep mb-3">The professor could not reach the lab</h3>
-                    <p className="text-sm sm:text-base leading-relaxed text-forest-deep/70">{analysisError}</p>
+                    <h3 className="text-2xl sm:text-3xl font-serif text-forest-deep mb-3">{analysisError.title}</h3>
+                    <p className="text-sm sm:text-base leading-relaxed text-forest-deep/70">{analysisError.message}</p>
+                    {analysisError.help && (
+                      <p className="mt-2 text-xs sm:text-sm leading-relaxed text-forest-deep/55">{analysisError.help}</p>
+                    )}
                     <div className="mt-6 flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={handleAnalyzeClick}

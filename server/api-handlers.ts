@@ -40,6 +40,17 @@ const sanitizeResultId = (value: unknown) => {
   return value;
 };
 
+const attachBilling = (result: unknown, billing: Record<string, unknown>) => {
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return {
+      ...(result as Record<string, unknown>),
+      billing,
+    };
+  }
+
+  return { result, billing };
+};
+
 export const handleAnalyzePlant = async (body: any, context: RequestContext) => {
   const clientIp = getClientIp(context);
   enforceMemoryLimit(`api:analyze:${clientIp}`, 20, 15 * 60 * 1000, 'Too many scan requests. Please try again later.');
@@ -56,10 +67,15 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
     const { analyzeFullProPlant } = await import('./gemini.js');
     const pointReservation = await consumeProPoint(user, { recordScan: true });
     try {
-      return await analyzeFullProPlant({
+      const result = await analyzeFullProPlant({
         base64Data,
         mimeType,
         userQuestion,
+      });
+      return attachBilling(result, {
+        ...pointReservation.billing,
+        proUnlocked: true,
+        fullProDiagnosis: true,
       });
     } catch (error) {
       await pointReservation.refund();
@@ -76,6 +92,7 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
           pro: existingPro,
           billing: {
             alreadyUnlocked: true,
+            proUnlocked: true,
             resultId,
           },
         };
@@ -95,7 +112,11 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
       if (resultId && (result as any)?.pro) {
         await saveUnlockedProForScan(user, resultId, (result as any).pro);
       }
-      return result;
+      return attachBilling(result, {
+        ...pointReservation.billing,
+        proUnlocked: true,
+        resultId: resultId || null,
+      });
     } catch (error) {
       await pointReservation.refund();
       throw error;
@@ -106,12 +127,13 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
   const basicReservation = await reserveBasicScan(user, clientIp);
   try {
     const { analyzePlant } = await import('./gemini.js');
-    return await analyzePlant({
+    const result = await analyzePlant({
       base64Data,
       mimeType,
       userQuestion,
       isPro: false,
     });
+    return attachBilling(result, basicReservation.billing);
   } catch (error) {
     await basicReservation.refund();
     throw error;
