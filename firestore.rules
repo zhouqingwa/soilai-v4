@@ -138,7 +138,7 @@ service cloud.firestore {
     }
 
     function isValidScan(data) {
-      return hasOnlyAllowedFields(['userId', 'species', 'risk', 'summary', 'imageUrl', 'imageData', 'imageType', 'originalImageData', 'originalImageType', 'createdAt', 'coreName', 'diagnosis', 'treatment', 'prevention', 'killerTitle', 'originalImageUrl', 'particleImageUrl', 'basic', 'proPreview', 'pro', 'proUnlocked', 'proUnlockedAt', 'actionPlan', 'recommendedProducts']) &&
+      return hasOnlyAllowedFields(['userId', 'species', 'risk', 'summary', 'imageUrl', 'imageData', 'imageType', 'originalImageData', 'originalImageType', 'createdAt', 'coreName', 'diagnosis', 'treatment', 'prevention', 'killerTitle', 'originalImageUrl', 'particleImageUrl', 'basic', 'proPreview', 'pro', 'proUnlocked', 'proUnlockedAt', 'actionPlan', 'recommendedProducts', 'billing', 'scanBillingChannel', 'usedFreeScan', 'usedScanPoint', 'scanPointCost', 'fullProDiagnosis']) &&
              hasRequiredFields(['userId', 'createdAt']) &&
              data.userId is string && data.userId == request.auth.uid &&
              (!('species' in data) || data.species == null || (data.species is string && data.species.size() <= 500)) &&
@@ -160,6 +160,12 @@ service cloud.firestore {
              (!('basic' in data) || data.basic == null || data.basic is map) &&
              (!('proPreview' in data) || data.proPreview == null || data.proPreview is map) &&
              (!('pro' in data) || data.pro == null || data.pro is map) &&
+             (!('billing' in data) || data.billing == null || data.billing is map) &&
+             (!('scanBillingChannel' in data) || data.scanBillingChannel == null || data.scanBillingChannel in ['free-basic', 'scan-point']) &&
+             (!('usedFreeScan' in data) || data.usedFreeScan == null || data.usedFreeScan is bool) &&
+             (!('usedScanPoint' in data) || data.usedScanPoint == null || data.usedScanPoint is bool) &&
+             (!('scanPointCost' in data) || data.scanPointCost == null || (data.scanPointCost is number && data.scanPointCost >= 0 && data.scanPointCost <= 1)) &&
+             (!('fullProDiagnosis' in data) || data.fullProDiagnosis == null || data.fullProDiagnosis is bool) &&
              (!('proUnlocked' in data) || data.proUnlocked == null || data.proUnlocked is bool) &&
              (!('proUnlockedAt' in data) || data.proUnlockedAt == null || data.proUnlockedAt is timestamp) &&
              (!('actionPlan' in data) || data.actionPlan == null || data.actionPlan is list) &&
@@ -207,6 +213,23 @@ service cloud.firestore {
       return isAllowed && validTopPlants && validTopProblems;
     }
 
+    function isValidPointLedger(data) {
+      return hasOnlyAllowedFields(['userId', 'type', 'reason', 'pointsDelta', 'pointsBalance', 'resultId', 'orderId', 'captureId', 'tierId', 'amount', 'currency', 'createdAt']) &&
+             hasRequiredFields(['userId', 'type', 'reason', 'pointsDelta', 'pointsBalance', 'createdAt']) &&
+             data.userId is string &&
+             data.type in ['credit', 'debit', 'refund'] &&
+             data.reason in ['paypal-purchase', 'full-pro-diagnosis', 'pro-rescue-plan', 'model-error-refund'] &&
+             data.pointsDelta is number &&
+             data.pointsBalance is number && data.pointsBalance >= 0 &&
+             data.createdAt is timestamp &&
+             (!('resultId' in data) || data.resultId == null || (data.resultId is string && data.resultId.size() <= 128)) &&
+             (!('orderId' in data) || data.orderId == null || (data.orderId is string && data.orderId.size() <= 200)) &&
+             (!('captureId' in data) || data.captureId == null || (data.captureId is string && data.captureId.size() <= 200)) &&
+             (!('tierId' in data) || data.tierId == null || (data.tierId is string && data.tierId.size() <= 80)) &&
+             (!('amount' in data) || data.amount == null || (data.amount is string && data.amount.size() <= 40)) &&
+             (!('currency' in data) || data.currency == null || (data.currency is string && data.currency.size() <= 10));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -242,6 +265,11 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    match /point_ledger/{ledgerId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create, update, delete: if false;
     }

@@ -15,6 +15,7 @@ import {
   handleGenerateIllustration,
   handleTrackEvent,
 } from "./server/api-handlers.js";
+import { getSystemStatus } from "./server/system-status.js";
 import { toPublicError } from "./server/http.js";
 
 const DEFAULT_SITE_URL = "https://www.soilai.app";
@@ -171,7 +172,7 @@ const buildArticleSeo = (article: Article, baseUrl: string) => {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT || 3000);
+  const PORT = Number(process.env.PORT || 5173);
 
   // Trust proxy is required when running behind a reverse proxy (e.g. Cloud Run, Vercel)
   app.set('trust proxy', 1);
@@ -204,6 +205,19 @@ async function startServer() {
     }
     next(err);
   });
+
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      ok: true,
+      service: "soilai-api",
+    });
+  });
+
+  app.get("/api/system-status", (_req, res) => {
+    const status = getSystemStatus();
+    res.status(status.ok ? 200 : 503).json(status);
+  });
+
   app.use("/api/", apiLimiter);
 
   app.post("/api/analyze-plant", async (req, res) => {

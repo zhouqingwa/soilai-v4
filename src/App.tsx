@@ -120,6 +120,7 @@ const AMAZON_AFFILIATE_TAG = import.meta.env.VITE_AMAZON_AFFILIATE_TAG || 'YOUR_
 const FREE_BASIC_DAILY_LIMIT = 1;
 
 type AnalyzeMode = 'free-basic' | 'full-pro';
+type LoadingContext = 'analysis' | 'sample' | 'care-guide' | null;
 type AnalysisErrorCopy = {
   title: string;
   message: string;
@@ -141,16 +142,37 @@ type ScanBilling = {
   alreadyUnlocked?: boolean;
   proUnlocked?: boolean;
   fullProDiagnosis?: boolean;
+  resultId?: string | null;
 };
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
+const API_REQUEST_TIMEOUT_MS = 90000;
+
+const postJson = async <T,>(
+  url: string,
+  body: unknown,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<T> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = await auth.currentUser?.getIdToken().catch(() => null);
   if (token) {
     headers.Authorization = `Bearer ${token}`;
+  }
+
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timeoutId = window.setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, options.timeoutMs || API_REQUEST_TIMEOUT_MS);
+
+  const abortFromParent = () => controller.abort();
+  if (options.signal?.aborted) {
+    controller.abort();
+  } else {
+    options.signal?.addEventListener('abort', abortFromParent, { once: true });
   }
 
   let response: Response;
@@ -159,12 +181,21 @@ const postJson = async <T,>(url: string, body: unknown): Promise<T> => {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch (fetchError) {
+    if ((fetchError as any)?.name === 'AbortError') {
+      const error = new Error(didTimeout ? 'Request timed out' : 'Request cancelled');
+      (error as any).code = didTimeout ? 'request_timeout' : 'request_cancelled';
+      throw error;
+    }
     const message = fetchError instanceof Error ? fetchError.message : 'Network request failed';
     const error = new Error(message);
     (error as any).code = 'network_failed';
     throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', abortFromParent);
   }
 
   const data = await response.json().catch(() => ({}));
@@ -195,6 +226,13 @@ const getAnalysisErrorCopy = (error: unknown): AnalysisErrorCopy => {
       title: 'The upload did not reach the lab',
       message: 'Your connection dropped before the photo reached SoilAI.',
       help: 'Refresh the page, switch to Wi-Fi, or try again with a smaller photo.',
+    };
+  }
+  if (code === 'request_timeout') {
+    return {
+      title: 'The lab took too long',
+      message: 'The AI service did not answer before the request timed out.',
+      help: 'Try again with a smaller photo, or wait a moment if the AI relay is busy.',
     };
   }
   if (status === 413 || code === 'payload_too_large') {
@@ -317,14 +355,17 @@ export default function App() {
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageType, setImageType] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Putting on reading glasses...');
+  const [loadingContext, setLoadingContext] = useState<LoadingContext>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [navDragProgress, setNavDragProgress] = useState<number | null>(null);
   const [isNavTouching, setIsNavTouching] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const analyzeButtonRef = useRef<HTMLDivElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const activeRequestRef = useRef<number | null>(null);
+  const activeAbortRef = useRef<AbortController | null>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [gardenScans, setGardenScans] = useState<any[]>([]);
@@ -471,7 +512,16 @@ export default function App() {
   }, [isProfileOpen]);
 
   useEffect(() => {
+    return () => {
+      activeAbortRef.current?.abort();
+      activeAbortRef.current = null;
+      activeRequestRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isLoading) return;
+    if (loadingContext !== 'analysis') return;
 
     const messages = [
       "Putting on reading glasses...",
@@ -496,7 +546,7 @@ export default function App() {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isLoading]);
+  }, [isLoading, loadingContext]);
 
   useEffect(() => {
     return () => {
@@ -507,9 +557,10 @@ export default function App() {
   }, [previewUrl]);
 
   useEffect(() => {
-    if ((pendingScan || analysisError) && !isLoading && resultRef.current) {
+    if ((pendingScan || analysisError) && !isLoading) {
       setTimeout(() => {
-        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const target = analysisError ? feedbackRef.current : resultRef.current;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
   }, [pendingScan, analysisError, isLoading]);
@@ -555,6 +606,8 @@ export default function App() {
   };
 
   const analyzeImage = async (base64Data: string, mimeType: string, mode: AnalyzeMode = 'free-basic') => {
+    if (isLoading || activeRequestRef.current) return;
+
     const today = new Date().toISOString().split('T')[0];
     const isFullProScan = mode === 'full-pro';
 
@@ -594,10 +647,13 @@ export default function App() {
     }
 
     const requestId = Date.now();
+    const requestController = new AbortController();
     activeRequestRef.current = requestId;
+    activeAbortRef.current = requestController;
 
     setPendingScan(null);
     setAnalysisError(null);
+    setLoadingContext('analysis');
     setIsLoading(true);
     try {
       trackEvent(isFullProScan ? 'paid_scan_attempt' : 'scan_attempt');
@@ -606,7 +662,7 @@ export default function App() {
         mimeType,
         userQuestion,
         ...(isFullProScan ? { mode: 'full-pro' } : {}),
-      }) as any;
+      }, { signal: requestController.signal }) as any;
       const billing = (parsedResponse?.billing || {}) as ScanBilling;
 
       if (activeRequestRef.current !== requestId) {
@@ -704,13 +760,16 @@ export default function App() {
     } finally {
       if (activeRequestRef.current === requestId) {
         setIsLoading(false);
-        activeRequestRef.current = 0;
+        setLoadingContext(null);
+        activeRequestRef.current = null;
+        activeAbortRef.current = null;
       }
     }
   };
 
   const handleUnlockPro = async () => {
     trackEvent('unlock_click');
+    if (isUnlockingPro) return;
     if (!imageData || !imageType || !pendingScan) return;
     if (pendingScan.pro) return;
 
@@ -766,8 +825,7 @@ export default function App() {
       } else if ((error as any)?.status === 401) {
         setIsProfileOpen(true);
       } else {
-        const copy = getAnalysisErrorCopy(error);
-        alert(`${copy.title}\n\n${copy.message}${copy.help ? `\n${copy.help}` : ''}`);
+        setAnalysisError(getAnalysisErrorCopy(error));
       }
     } finally {
       setIsUnlockingPro(false);
@@ -775,8 +833,11 @@ export default function App() {
   };
 
   const cancelAnalysis = () => {
-    activeRequestRef.current = 0;
+    activeAbortRef.current?.abort();
+    activeAbortRef.current = null;
+    activeRequestRef.current = null;
     setIsLoading(false);
+    setLoadingContext(null);
     setPendingScan(null);
     setAnalysisError(null);
   };
@@ -861,6 +922,8 @@ export default function App() {
     setImageData(null);
     setImageType(null);
     setPreviewUrl(imageUrl);
+    setLoadingContext('sample');
+    setLoadingMessage('Preparing sample photo...');
     setIsLoading(true);
 
     try {
@@ -872,9 +935,15 @@ export default function App() {
       setImageType(preparedImage.mimeType);
     } catch (error) {
       console.error('Error fetching sample image:', error);
-      alert('Failed to load sample image.');
+      setPreviewUrl(null);
+      setAnalysisError({
+        title: 'Sample photo could not load',
+        message: 'The demo image did not reach SoilAI.',
+        help: 'Choose your own plant photo instead, or try again in a moment.',
+      });
     } finally {
       setIsLoading(false);
+      setLoadingContext(null);
     }
   };
 
@@ -888,13 +957,24 @@ export default function App() {
     setShowPaidScanModal(false);
     if (imageData && imageType) {
       await analyzeImage(imageData, imageType, 'full-pro');
+    } else {
+      setAnalysisError({
+        title: 'Photo is not ready yet',
+        message: 'The selected photo is still being prepared for analysis.',
+        help: 'Wait for the photo ready badge, then try again.',
+      });
     }
   };
 
   const getPrimaryAnalyzeLabel = () => {
     if (isPreparingImage) return 'Preparing photo...';
     if (!previewUrl) return 'Waiting for photo...';
-    if (!user) return 'Analyze Plant';
+    if (!user) {
+      const today = new Date().toISOString().split('T')[0];
+      const lastScanDate = localStorage.getItem('lastScanDate');
+      const currentFreeScans = lastScanDate === today ? freeScansUsed : 0;
+      return currentFreeScans >= FREE_BASIC_DAILY_LIMIT ? 'Sign In to Continue' : 'Analyze Plant';
+    }
 
     const today = new Date().toISOString().split('T')[0];
     const currentDailyScans = userProfile?.lastScanDate === today ? (userProfile?.dailyScans || 0) : 0;
@@ -906,10 +986,134 @@ export default function App() {
     return 'Analyze Plant';
   };
 
+  const getScanAccessCopy = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const scanPoints = userProfile?.scanPoints || 0;
+
+    if (!user) {
+      const lastScanDate = localStorage.getItem('lastScanDate');
+      const currentFreeScans = lastScanDate === today ? freeScansUsed : 0;
+      if (currentFreeScans >= FREE_BASIC_DAILY_LIMIT) {
+        return {
+          label: 'Free Basic used today',
+          detail: 'Sign in to save scans and unlock Pro rescue plans.',
+          tone: 'muted',
+        };
+      }
+      return {
+        label: '1 free Basic scan available today',
+        detail: 'Sign in to save results and keep a plant history.',
+        tone: 'ready',
+      };
+    }
+
+    if (userProfile?.role === 'admin') {
+      return {
+        label: 'Admin scanning enabled',
+        detail: `${scanPoints} Scan Point${scanPoints === 1 ? '' : 's'} available.`,
+        tone: 'ready',
+      };
+    }
+
+    const currentDailyScans = userProfile?.lastScanDate === today ? (userProfile?.dailyScans || 0) : 0;
+    const remainingFreeScans = Math.max(0, FREE_BASIC_DAILY_LIMIT - currentDailyScans);
+
+    if (remainingFreeScans > 0) {
+      return {
+        label: `${remainingFreeScans} free Basic scan available today`,
+        detail: `${scanPoints} Scan Point${scanPoints === 1 ? '' : 's'} ready for Pro.`,
+        tone: 'ready',
+      };
+    }
+
+    if (scanPoints > 0) {
+      return {
+        label: 'Free Basic used today',
+        detail: `${scanPoints} Scan Point${scanPoints === 1 ? '' : 's'} available for full Pro scans.`,
+        tone: 'paid',
+      };
+    }
+
+    return {
+      label: 'Free Basic used today',
+      detail: 'Get Scan Points to keep diagnosing today.',
+      tone: 'muted',
+    };
+  };
+
+  const getScanBillingLabel = (scan: any) => {
+    const billing = (scan?.billing || {}) as ScanBilling;
+    if (scan?.pro) {
+      return billing.fullProDiagnosis ? 'Full Pro Diagnosis' : 'Pro Rescue Plan';
+    }
+    if (billing.usedFreeScan || billing.channel === 'free-basic') return 'Free Basic Diagnosis';
+    return 'Basic Diagnosis';
+  };
+
+  const toPlainText = (value?: string) =>
+    (value || '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[`*_#>~]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const truncateText = (value?: string, maxLength = 170) => {
+    const clean = toPlainText(value);
+    if (clean.length <= maxLength) return clean;
+    return `${clean.slice(0, maxLength).trim()}...`;
+  };
+
+  const getPrimaryIssue = (scan: any) =>
+    truncateText(scan?.basic?.mainIssue || scan?.mainIssue || scan?.basic?.summary || scan?.summary || '', 180);
+
+  const getFirstMove = (scan: any) =>
+    truncateText(
+      scan?.basic?.basicCareRule ||
+      scan?.pro?.stepByStepPlan?.[0] ||
+      scan?.basic?.actionPlan?.[0] ||
+      scan?.actionPlan?.[0] ||
+      '',
+      150
+    );
+
+  const getResultNextStep = (scan: any) => {
+    if (scan?.pro) return 'Work through the rescue plan below and save the result to your garden.';
+    if (scan?.proPreview) return 'Unlock Pro if you want exact rescue steps and a recovery schedule.';
+    return 'Save this result so you can compare future scans.';
+  };
+
+  const getPhotoStatusCopy = () => {
+    if (isPreparingImage) {
+      return {
+        label: 'Preparing photo',
+        detail: 'Compressing it for a faster scan.',
+        tone: 'loading',
+      };
+    }
+
+    if (previewUrl && imageData && imageType) {
+      return {
+        label: 'Photo ready',
+        detail: 'Ready when you are.',
+        tone: 'ready',
+      };
+    }
+
+    if (previewUrl) {
+      return {
+        label: 'Photo selected',
+        detail: 'Finishing upload prep.',
+        tone: 'loading',
+      };
+    }
+
+    return null;
+  };
+
   const handleSaveToGarden = async () => {
     trackEvent('save_to_garden');
     if (!user) {
-      alert('Please log in to save to your garden.');
+      setIsProfileOpen(true);
       return;
     }
     if (!pendingScan || isSaved || isSaving) return;
@@ -961,6 +1165,12 @@ export default function App() {
           basic: pendingScan.basic || null,
           proPreview: pendingScan.proPreview || null,
           pro: pendingScan.pro || null,
+          billing: pendingScan.billing || null,
+          scanBillingChannel: pendingScan.billing?.channel || null,
+          usedFreeScan: pendingScan.billing?.usedFreeScan === true,
+          usedScanPoint: pendingScan.billing?.usedScanPoint === true,
+          scanPointCost: pendingScan.billing?.usedScanPoint === true ? 1 : 0,
+          fullProDiagnosis: pendingScan.billing?.fullProDiagnosis === true,
           actionPlan: pendingScan.actionPlan || null, // legacy
           recommendedProducts: pendingScan.recommendedProducts || null, // legacy
 
@@ -992,7 +1202,11 @@ export default function App() {
       setIsSaved(true);
     } catch (e) {
       console.error("Failed to save scan to Firebase", e);
-      alert('Failed to save to your garden. Please try again. ' + (e instanceof Error ? e.message : ''));
+      setAnalysisError({
+        title: 'Could not save this scan',
+        message: 'Your diagnosis is still on this page, but it was not saved to your garden.',
+        help: 'Check your login and connection, then try Save again.',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -1001,6 +1215,7 @@ export default function App() {
   const handleViewInCareGuide = async () => {
     if (!(pendingScan?.basic?.species || pendingScan?.species)) return;
 
+    setLoadingContext('care-guide');
     setIsLoading(true);
     setLoadingMessage('Checking the archives...');
 
@@ -1016,13 +1231,19 @@ export default function App() {
 
       if (existingPlant) {
         setIsLoading(false);
+        setLoadingContext(null);
         navigate('/guide', { state: { targetPlantName: cleanName } });
         return;
       }
 
       if (userProfile?.role !== 'admin') {
         setIsLoading(false);
-        alert('This plant is not in the care guide yet.');
+        setLoadingContext(null);
+        setAnalysisError({
+          title: 'Care guide not ready yet',
+          message: 'This plant is not in the care guide library yet.',
+          help: 'Save the scan to your garden, or use Journal articles for general recovery advice.',
+        });
         return;
       }
 
@@ -1066,12 +1287,18 @@ export default function App() {
       });
 
       setIsLoading(false);
+      setLoadingContext(null);
       navigate('/guide', { state: { targetPlantName: cleanName } });
 
     } catch (error) {
       console.error("Error in handleViewInCareGuide", error);
       setIsLoading(false);
-      alert("Failed to load or generate care guide. Please try again.");
+      setLoadingContext(null);
+      setAnalysisError({
+        title: 'Care guide could not load',
+        message: 'SoilAI could not open or generate the care guide right now.',
+        help: 'Try again in a moment, or save this scan and come back later.',
+      });
     }
   };
 
@@ -1105,6 +1332,9 @@ export default function App() {
     </div>
   );
 
+  const scanAccessCopy = getScanAccessCopy();
+  const photoStatusCopy = getPhotoStatusCopy();
+
   return (
     <div className="min-h-screen bg-earth-sand text-forest-deep font-sans antialiased flex flex-col">
       <Header
@@ -1135,17 +1365,17 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              className="flex flex-1 flex-col items-center justify-start px-0 text-center max-w-4xl mx-auto w-full pt-0 pb-32 md:justify-center md:px-4 md:py-12"
+              className="flex flex-1 flex-col items-center justify-start px-4 text-center max-w-4xl mx-auto w-full pt-24 pb-32 md:justify-center md:px-4 md:py-12"
             >
               <Helmet>
                 <title>Soil AI - Plant Roast & Care</title>
                 <meta name="description" content="Soil AI: Your AI-powered plant diagnosis & care guide. Identify sick plants, diagnose soil issues, and stop killing your plants with a side of brutal honesty." />
                 <link rel="canonical" href={APP_SITE_URL} />
               </Helmet>
-        <div className="mb-14 mt-4 hidden md:block">
-          <h1 className="text-forest-deep tracking-tight text-5xl md:text-6xl lg:text-[5.5rem] font-serif font-normal leading-tight mb-5">
+        <div className="mb-8 mt-2 block md:mb-14 md:mt-4">
+          <h1 className="text-forest-deep tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-[5.5rem] font-serif font-normal leading-tight mb-4 md:mb-5">
             Stop guessing. <br />
-            <span className="font-serif italic text-forest-deep text-5xl md:text-6xl lg:text-[6rem] tracking-tight block mt-1">Start diagnosing.</span>
+            <span className="font-serif italic text-forest-deep text-4xl sm:text-5xl md:text-6xl lg:text-[6rem] tracking-tight block mt-1">Start diagnosing.</span>
           </h1>
           <p className="text-stone-muted/80 text-sm md:text-base font-normal tracking-wide max-w-sm mx-auto leading-relaxed">
             Expert diagnostics with a side of brutal honesty.
@@ -1156,7 +1386,7 @@ export default function App() {
         <div className={`relative group mx-auto ${
           previewUrl
             ? 'w-fit max-w-[calc(100vw-2rem)] sm:max-w-md mb-8 mt-4'
-            : 'w-full max-w-none md:max-w-sm aspect-[941/1672] mb-10 mt-0 md:mt-4'
+            : 'w-[min(88vw,27rem)] md:w-full md:max-w-sm aspect-[941/1672] mb-10 mt-0 md:mt-4'
         }`}>
           {/* Glow effect */}
           {!previewUrl && (
@@ -1178,8 +1408,8 @@ export default function App() {
             }}
             className={`relative block overflow-hidden cursor-pointer group transition-all duration-300 ${(isLoading || isPreparingImage) ? 'pointer-events-none' : ''} ${isDragging ? 'ring-1 ring-forest-deep scale-[1.01]' : ''} ${
               previewUrl
-                ? 'w-fit max-w-full rounded-[1.25rem] border border-forest-deep/10 bg-transparent shadow-sm hover:border-forest-deep/20'
-                : 'w-full h-full rounded-none border-0 bg-transparent shadow-none'
+                ? 'w-fit max-w-full rounded-[1.75rem] border border-forest-deep/10 bg-transparent shadow-sm hover:border-forest-deep/20'
+                : 'w-full h-full rounded-[1.75rem] border border-forest-deep/10 bg-white/70 shadow-[0_18px_50px_rgba(28,46,36,0.10)]'
             }`}
           >
             <input
@@ -1208,7 +1438,7 @@ export default function App() {
               <img
                 src={previewUrl}
                 alt="Uploaded plant"
-                className={`block h-auto w-auto max-h-[68svh] max-w-full object-contain transition-all duration-700 ${isLoading ? 'scale-105 blur-md opacity-40' : 'opacity-100 md:group-hover:opacity-95'}`}
+                className={`block h-auto w-auto max-h-[68svh] max-w-full rounded-[1.75rem] object-contain transition-all duration-700 ${isLoading ? 'scale-105 blur-md opacity-40' : 'opacity-100 md:group-hover:opacity-95'}`}
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -1219,14 +1449,14 @@ export default function App() {
 
             {/* Upload Overlay */}
             {!previewUrl && !isLoading && (
-              <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center transition-all duration-300 px-6 pb-24 ${isDragging ? 'bg-forest-deep/20 backdrop-blur-sm' : 'bg-transparent opacity-100 group-hover:bg-forest-deep/5'}`}>
-                <div className="w-16 h-16 rounded-full bg-white/95 border border-forest-deep/10 flex items-center justify-center mb-4 shadow-xl transform transition-transform duration-300 group-hover:scale-[1.05]">
+              <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center transition-all duration-300 px-6 pb-20 sm:pb-24 ${isDragging ? 'bg-forest-deep/20 backdrop-blur-sm' : 'bg-gradient-to-b from-transparent via-transparent to-white/20 opacity-100 group-hover:bg-forest-deep/5'}`}>
+                <div className="w-16 h-16 rounded-full bg-white/95 border border-forest-deep/10 flex items-center justify-center mb-4 shadow-xl ring-1 ring-white/70 transform transition-transform duration-300 group-hover:scale-[1.05]">
                   <Camera className="w-7 h-7 text-forest-deep" strokeWidth={1.5} />
                 </div>
-                <span className="text-white font-bold tracking-[0.15em] text-xs uppercase drop-shadow-md px-6 text-center">
+                <span className="text-forest-deep font-bold tracking-[0.15em] text-xs uppercase px-6 text-center [text-shadow:0_1px_14px_rgba(255,255,255,0.95)]">
                   {isDragging ? 'Drop Image Here' : 'Photograph your victim'}
                 </span>
-                <span className="text-white/80 text-[10px] mt-2.5 font-medium tracking-widest uppercase hidden md:block drop-shadow-md">
+                <span className="text-forest-deep/60 text-[10px] mt-2.5 font-medium tracking-widest uppercase hidden md:block [text-shadow:0_1px_12px_rgba(255,255,255,0.9)]">
                   or drag and drop here
                 </span>
               </div>
@@ -1271,9 +1501,38 @@ export default function App() {
         </div>
 
         {/* Helper Text */}
-        <p className="max-w-lg mx-auto mb-6 px-4 text-center text-[11px] leading-relaxed tracking-wide text-forest-deep/55 sm:text-xs">
+        <p className="max-w-lg mx-auto mb-4 px-4 text-center text-[11px] leading-relaxed tracking-wide text-forest-deep/55 sm:text-xs">
           Camera black screen? Allow Camera in Settings &gt; Browser, then try again.
         </p>
+
+        {photoStatusCopy && (
+          <div className={`mb-3 inline-flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border px-4 py-2 text-[11px] shadow-sm ${
+            photoStatusCopy.tone === 'ready'
+              ? 'border-emerald-900/10 bg-white/70 text-emerald-950'
+              : 'border-forest-deep/10 bg-white/55 text-forest-deep/70'
+          }`}>
+            {photoStatusCopy.tone === 'ready' ? (
+              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+            ) : (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+            )}
+            <span className="font-bold uppercase tracking-[0.16em]">{photoStatusCopy.label}</span>
+            <span className="hidden h-1 w-1 rounded-full bg-current opacity-25 sm:block"></span>
+            <span className="opacity-65">{photoStatusCopy.detail}</span>
+          </div>
+        )}
+
+        <div className={`mb-6 inline-flex max-w-[calc(100vw-2rem)] flex-col items-center gap-1 rounded-2xl border px-4 py-3 text-center shadow-sm sm:flex-row sm:gap-3 sm:text-left ${
+          scanAccessCopy.tone === 'ready'
+            ? 'border-emerald-900/10 bg-[#F4F9F4] text-emerald-950'
+            : scanAccessCopy.tone === 'paid'
+              ? 'border-yellow-700/20 bg-[#FFF7D8] text-forest-deep'
+              : 'border-forest-deep/10 bg-white/55 text-forest-deep'
+        }`}>
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em]">{scanAccessCopy.label}</span>
+          <span className="hidden h-1 w-1 rounded-full bg-current opacity-30 sm:block"></span>
+          <span className="text-[11px] leading-relaxed opacity-70">{scanAccessCopy.detail}</span>
+        </div>
 
         {/* User Question Input */}
         <div className="w-full max-w-lg mx-auto mb-8 relative z-20 group">
@@ -1322,7 +1581,7 @@ export default function App() {
             <button
               onClick={handleAnalyzeClick}
               disabled={!imageData || isLoading || isPreparingImage}
-              className={`relative w-[320px] h-[54px] flex items-center justify-center transition-all duration-500 active:duration-75 ease-[0.16, 1, 0.3, 1] rounded-full overflow-hidden group
+              className={`relative w-[min(320px,calc(100vw-2rem))] h-[54px] flex items-center justify-center transition-all duration-500 active:duration-75 ease-[0.16, 1, 0.3, 1] rounded-full overflow-hidden group
                 ${(!imageData || isLoading || isPreparingImage)
                   ? 'border border-forest-deep/15 text-forest-deep/40 bg-transparent cursor-not-allowed'
                   : 'bg-gradient-to-b from-[#f1f3ee] via-[#dce2d1] to-[#9caf88] text-[#2d3a2d] cursor-pointer active:scale-[0.98] active:translate-y-[1px] hover:shadow-[0_15px_30px_-8px_rgba(45,58,45,0.2),inset_0_1px_0_rgba(255,255,255,0.8)] border border-[#7d8f69]/40 ring-1 ring-[#f1f3ee]/40 ring-inset'
@@ -1418,7 +1677,7 @@ export default function App() {
                   </svg>
                 </div>
                 <span className="text-emerald-700 font-semibold tracking-widest text-xs uppercase animate-pulse">
-                  Analyzing...
+                  {loadingContext === 'care-guide' ? 'Opening...' : loadingContext === 'sample' ? 'Preparing...' : 'Analyzing...'}
                 </span>
               </div>
               ) : (
@@ -1492,7 +1751,7 @@ export default function App() {
 
           {/* Cancel Button */}
           <AnimatePresence>
-            {isLoading && (
+            {isLoading && loadingContext === 'analysis' && (
               <motion.button
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1517,7 +1776,7 @@ export default function App() {
               animate={{ opacity: 1, height: 'auto', y: 0 }}
               exit={{ opacity: 0, height: 0, y: 20 }}
               transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-              ref={resultRef}
+              ref={feedbackRef}
               className="w-full max-w-2xl mx-auto mt-12 rounded-3xl border border-red-900/15 bg-[#FFF8F6] shadow-xl overflow-hidden text-left"
             >
               <div className="p-6 sm:p-7">
@@ -1535,11 +1794,11 @@ export default function App() {
                     <div className="mt-6 flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={handleAnalyzeClick}
-                        disabled={!imageData || isPreparingImage}
+                        disabled={!imageData || isPreparingImage || isLoading}
                         className="inline-flex items-center justify-center gap-2 rounded-full bg-forest-deep px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white transition-colors hover:bg-[#1C2E24] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCcw className="w-4 h-4" />
-                        Try Again
+                        {isLoading ? 'Trying Again' : 'Try Again'}
                       </button>
                       <button
                         onClick={() => setAnalysisError(null)}
@@ -1568,10 +1827,15 @@ export default function App() {
             >
               {/* Header */}
               <div className="flex items-center justify-between p-5 sm:p-6 border-b border-forest-deep/5 bg-[#FAF8F5]">
-                <h3 className="text-forest-deep font-semibold uppercase tracking-widest text-xs sm:text-sm flex items-center gap-2">
-                  <div className="w-1 h-4 bg-forest-deep rounded-sm"></div>
-                  Diagnosis Result
-                </h3>
+                <div className="min-w-0">
+                  <h3 className="text-forest-deep font-semibold uppercase tracking-widest text-xs sm:text-sm flex items-center gap-2">
+                    <div className="w-1 h-4 bg-forest-deep rounded-sm"></div>
+                    Diagnosis Result
+                  </h3>
+                  <p className="mt-2 inline-flex rounded-full border border-forest-deep/10 bg-white/65 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-forest-deep/55">
+                    {getScanBillingLabel(pendingScan)}
+                  </p>
+                </div>
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-2 text-forest-deep/60 hover:text-forest-deep px-4 py-2 rounded-lg hover:bg-forest-deep/5 transition-colors text-xs font-semibold uppercase tracking-widest cursor-pointer"
@@ -1602,6 +1866,38 @@ export default function App() {
                   </div>
 
                   <RiskBadge risk={pendingScan?.basic?.risk || pendingScan?.risk} />
+                </div>
+
+                <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-forest-deep/10 bg-white/70 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-forest-deep/45">
+                      <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.8} />
+                      Problem
+                    </div>
+                    <div className="text-sm leading-relaxed text-forest-deep/80 [&_p]:m-0">
+                      <MarkdownResult content={getPrimaryIssue(pendingScan) || 'Diagnosis received. Review the details below.'} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-900/10 bg-[#F4F9F4] p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-900/55">
+                      <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                      First Move
+                    </div>
+                    <div className="text-sm leading-relaxed text-emerald-950/80 [&_p]:m-0">
+                      <MarkdownResult content={getFirstMove(pendingScan) || 'Do not change everything at once. Start with the clearest issue first.'} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-forest-deep/10 bg-white/70 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-forest-deep/45">
+                      <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+                      Next
+                    </div>
+                    <p className="text-sm leading-relaxed text-forest-deep/72">
+                      {getResultNextStep(pendingScan)}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Diagnosis Summary */}
@@ -1768,7 +2064,7 @@ export default function App() {
                             Premium Analysis
                           </div>
                           <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 flex items-center gap-1">
-                            <span>Costs 1 Scan Point</span>
+                            <span>{user ? `${userProfile?.scanPoints || 0} available · Costs 1 Scan Point` : 'Sign in required · Costs 1 Scan Point'}</span>
                           </div>
                         </div>
 
@@ -2014,13 +2310,13 @@ export default function App() {
 
               <button
                 onClick={handleConfirmPaidScan}
-                disabled={isLoading}
+                disabled={isLoading || isPreparingImage || !imageData || !imageType}
                 className="w-full py-4 bg-forest-deep text-white rounded-full font-bold uppercase tracking-widest text-sm hover:bg-forest-deep/90 transition-colors shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {isLoading ? (
+                {isLoading || isPreparingImage ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Running Pro Diagnosis
+                    {isPreparingImage ? 'Preparing Photo' : 'Running Pro Diagnosis'}
                   </>
                 ) : (
                   <>

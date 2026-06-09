@@ -1,7 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Loader2, CloudUpload, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 interface ProfileModalProps {
   isProfileOpen: boolean;
@@ -25,6 +27,62 @@ export const ProfileModal = ({
   const navigate = useNavigate();
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [pointLedger, setPointLedger] = useState<any[]>([]);
+  const [isLedgerLoading, setIsLedgerLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPointLedger = async () => {
+      if (!isProfileOpen || !user) {
+        setPointLedger([]);
+        return;
+      }
+
+      setIsLedgerLoading(true);
+      try {
+        const ledgerQuery = query(
+          collection(db, 'point_ledger'),
+          where('userId', '==', user.uid),
+          limit(20)
+        );
+        const snapshot = await getDocs(ledgerQuery);
+        if (isMounted) {
+          const rows = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+            .slice(0, 5);
+          setPointLedger(rows);
+        }
+      } catch (error) {
+        console.warn('Could not load point ledger yet. Firestore rules/index may need deployment.', error);
+        if (isMounted) setPointLedger([]);
+      } finally {
+        if (isMounted) setIsLedgerLoading(false);
+      }
+    };
+
+    loadPointLedger();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isProfileOpen, user]);
+
+  const formatLedgerDate = (value: any) => {
+    if (!value) return 'Recent';
+    const date = value.seconds ? new Date(value.seconds * 1000) : new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Recent' : date.toLocaleDateString();
+  };
+
+  const getLedgerLabel = (entry: any) => {
+    if (entry.reason === 'paypal-purchase') return 'Points purchased';
+    if (entry.reason === 'full-pro-diagnosis') return 'Full Pro diagnosis';
+    if (entry.reason === 'pro-rescue-plan') return 'Rescue plan unlocked';
+    if (entry.reason === 'model-error-refund') return 'Point refunded';
+    return 'Point activity';
+  };
+
   return (
     <AnimatePresence>
       {isProfileOpen && (
@@ -90,6 +148,32 @@ export const ProfileModal = ({
                     <Crown className="w-5 h-5" />
                     Buy Points
                   </button>
+
+                  <div className="w-full mb-4 rounded-2xl border border-forest-deep/10 bg-stone-50/70 p-4 text-left">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-forest-deep/55">Point Activity</h3>
+                      {isLedgerLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-forest-deep/40" />}
+                    </div>
+                    {pointLedger.length > 0 ? (
+                      <div className="space-y-2">
+                        {pointLedger.map((entry) => (
+                          <div key={entry.id} className="flex items-center justify-between gap-4 rounded-xl bg-white px-3 py-2 text-xs">
+                            <div>
+                              <div className="font-semibold text-forest-deep">{getLedgerLabel(entry)}</div>
+                              <div className="text-[10px] uppercase tracking-wider text-stone-muted">{formatLedgerDate(entry.createdAt)}</div>
+                            </div>
+                            <div className={`font-bold ${entry.pointsDelta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                              {entry.pointsDelta > 0 ? '+' : ''}{entry.pointsDelta}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs leading-relaxed text-forest-deep/50">
+                        No point activity yet. Purchases and Pro unlocks will appear here after the next deployment.
+                      </p>
+                    )}
+                  </div>
 
                   {userProfile?.role === 'admin' && (
                     <button

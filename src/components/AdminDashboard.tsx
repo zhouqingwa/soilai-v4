@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy, writeBatch, limit, setDoc, getDoc, getCountFromServer } from 'firebase/firestore';
 import { db } from '../firebase';
 import { compressImage } from '../utils/image';
-import { Trash2, Plus, Users, ScanLine, FileText, Leaf, ArrowUp, ArrowDown, Edit2, X, GripVertical, Search, Loader2 } from 'lucide-react';
+import { Trash2, Plus, Users, ScanLine, FileText, Leaf, ArrowUp, ArrowDown, Edit2, X, GripVertical, Search, Loader2, ShieldCheck } from 'lucide-react';
 import { plantsData as defaultPlantsData } from '../data/plants';
 import { Reorder } from 'framer-motion';
 
@@ -10,9 +10,10 @@ export default function AdminDashboard({ user, userProfile }: { user: any, userP
   const [usersList, setUsersList] = useState<any[]>([]);
   const [plantsList, setPlantsList] = useState<any[]>([]);
   const [scansList, setScansList] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'scans' | 'analytics'>('analytics');
+  const [activeTab, setActiveTab] = useState<'users' | 'scans' | 'analytics' | 'system'>('analytics');
   const [stats, setStats] = useState({ users: 0, scans: 0, plants: 0 });
   const [metrics, setMetrics] = useState<any>({});
+  const [systemStatus, setSystemStatus] = useState<any | null>(null);
   const [errorHeader, setErrorHeader] = useState<string | null>(null);
 
   const [isAddingPlant, setIsAddingPlant] = useState(false);
@@ -36,6 +37,7 @@ export default function AdminDashboard({ user, userProfile }: { user: any, userP
       if (activeTab === 'analytics') fetchAnalytics(isMounted);
       else if (activeTab === 'users') fetchUsers(isMounted);
       else if (activeTab === 'scans') fetchScans(isMounted);
+      else if (activeTab === 'system') fetchSystemStatus(isMounted);
     }
     return () => {
       isMounted = false;
@@ -79,6 +81,20 @@ export default function AdminDashboard({ user, userProfile }: { user: any, userP
         console.error("Error fetching analytics", error);
         if (isMounted) setErrorHeader(error.message);
       }
+    } finally {
+      if (isMounted) setIsLoading(false);
+    }
+  };
+
+  const fetchSystemStatus = async (isMounted = true, showLoading = true) => {
+    if (showLoading && isMounted) setIsLoading(true);
+    try {
+      const response = await fetch('/api/system-status');
+      const data = await response.json().catch(() => ({}));
+      if (isMounted) setSystemStatus(data);
+    } catch (error: any) {
+      console.error("Error fetching system status", error);
+      if (isMounted) setErrorHeader(error.message);
     } finally {
       if (isMounted) setIsLoading(false);
     }
@@ -546,7 +562,81 @@ export default function AdminDashboard({ user, userProfile }: { user: any, userP
         >
           User Scans
         </button>
+        <button
+          onClick={() => setActiveTab('system')}
+          className={`pb-4 text-sm font-bold uppercase tracking-wider transition-colors ${activeTab === 'system' ? 'border-b-2 border-forest-deep text-forest-deep' : 'text-stone-muted hover:text-forest-deep/70'}`}
+        >
+          System
+        </button>
       </div>
+
+      {activeTab === 'system' && (
+        <div className="bg-white rounded-[2rem] shadow-sm border border-forest-deep/5 p-8 md:p-12 mb-8">
+          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-light text-forest-deep mb-2">Deployment Health</h2>
+              <p className="text-sm text-stone-muted max-w-xl">
+                Checks whether required production settings exist. Secret values are never shown.
+              </p>
+            </div>
+            <button
+              onClick={() => fetchSystemStatus(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-forest-deep/10 px-5 py-3 text-xs font-bold uppercase tracking-widest text-forest-deep transition-colors hover:bg-stone-50"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
+
+          {isLoading && !systemStatus ? (
+            <div className="flex items-center gap-3 text-sm text-stone-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking deployment settings...
+            </div>
+          ) : (
+            <>
+              <div className={`mb-6 inline-flex rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] ${
+                systemStatus?.status === 'ok'
+                  ? 'bg-emerald-50 text-emerald-900'
+                  : systemStatus?.status === 'warning'
+                    ? 'bg-yellow-50 text-yellow-800'
+                    : 'bg-red-50 text-red-800'
+              }`}>
+                {systemStatus?.status || 'unknown'}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(systemStatus?.checks || []).map((check: any) => (
+                  <div
+                    key={check.label}
+                    className={`rounded-2xl border p-5 ${
+                      check.status === 'ok'
+                        ? 'border-emerald-900/10 bg-emerald-50/40'
+                        : check.status === 'warning'
+                          ? 'border-yellow-800/15 bg-yellow-50/50'
+                          : 'border-red-900/15 bg-red-50/45'
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-4">
+                      <h3 className="text-sm font-bold text-forest-deep">{check.label}</h3>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-forest-deep/55">
+                        {check.configured ? 'configured' : 'missing'}
+                      </span>
+                    </div>
+                    {check.hint && (
+                      <p className="text-xs leading-relaxed text-forest-deep/60">{check.hint}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-6 text-[11px] uppercase tracking-[0.16em] text-stone-muted">
+                Last checked: {systemStatus?.generatedAt ? new Date(systemStatus.generatedAt).toLocaleString() : 'never'}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {activeTab === 'analytics' && (
         <div className="bg-white rounded-[2rem] shadow-sm border border-forest-deep/5 p-8 md:p-12 mb-8">

@@ -65,7 +65,10 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
   if (wantsFullPro) {
     const user = await requireAuthenticatedUser(context);
     const { analyzeFullProPlant } = await import('./gemini.js');
-    const pointReservation = await consumeProPoint(user, { recordScan: true });
+    const pointReservation = await consumeProPoint(user, {
+      recordScan: true,
+      reason: 'full-pro-diagnosis',
+    });
     try {
       const result = await analyzeFullProPlant({
         base64Data,
@@ -99,7 +102,10 @@ export const handleAnalyzePlant = async (body: any, context: RequestContext) => 
       }
     }
 
-    const pointReservation = await consumeProPoint(user);
+    const pointReservation = await consumeProPoint(user, {
+      reason: 'pro-rescue-plan',
+      resultId: resultId || null,
+    });
     try {
       const { analyzePlant } = await import('./gemini.js');
       const result = await analyzePlant({

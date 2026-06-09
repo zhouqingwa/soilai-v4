@@ -22,6 +22,42 @@ const toNumber = (value: unknown, fallback = 0) =>
 const isUnlimitedRole = (role: unknown) => role === 'admin';
 const freeBasicDailyLimit = 1;
 
+type PointLedgerType = 'credit' | 'debit' | 'refund';
+type PointLedgerReason =
+  | 'paypal-purchase'
+  | 'full-pro-diagnosis'
+  | 'pro-rescue-plan'
+  | 'model-error-refund';
+
+const buildPointLedgerWrite = (
+  user: AuthenticatedUser,
+  entry: {
+    type: PointLedgerType;
+    reason: PointLedgerReason;
+    pointsDelta: number;
+    pointsBalance: number;
+    resultId?: string | null;
+    orderId?: string | null;
+    captureId?: string | null;
+    tierId?: string | null;
+    amount?: string | null;
+    currency?: string | null;
+  }
+) => buildUpdateWrite(`point_ledger/${crypto.randomUUID()}`, {
+  userId: user.uid,
+  type: entry.type,
+  reason: entry.reason,
+  pointsDelta: entry.pointsDelta,
+  pointsBalance: entry.pointsBalance,
+  resultId: entry.resultId || null,
+  orderId: entry.orderId || null,
+  captureId: entry.captureId || null,
+  tierId: entry.tierId || null,
+  amount: entry.amount || null,
+  currency: entry.currency || null,
+  createdAt: new Date(),
+}, { exists: false });
+
 const getGuestLimitPath = (clientIp: string) => {
   const salt = process.env.GUEST_LIMIT_SALT || process.env.FIREBASE_PROJECT_ID || 'soilai';
   const digest = crypto
@@ -263,7 +299,14 @@ export const saveUnlockedProForScan = async (
   }
 };
 
-export const consumeProPoint = async (user: AuthenticatedUser, options: { recordScan?: boolean } = {}) => {
+export const consumeProPoint = async (
+  user: AuthenticatedUser,
+  options: {
+    recordScan?: boolean;
+    reason?: Exclude<PointLedgerReason, 'paypal-purchase' | 'model-error-refund'>;
+    resultId?: string | null;
+  } = {}
+) => {
   if (!hasServiceAccountCredentials()) {
     throw new ApiError(
       503,
@@ -289,8 +332,17 @@ export const consumeProPoint = async (user: AuthenticatedUser, options: { record
       updateFields.plantsScanned = toNumber(existing?.plantsScanned) + 1;
     }
 
+    const pointsBalance = scanPoints - 1;
+
     await commitFirestoreWrites([
       buildUpdateWrite(userPath, updateFields, { updateTime: userDoc.updateTime }),
+      buildPointLedgerWrite(user, {
+        type: 'debit',
+        reason: options.reason || (options.recordScan ? 'full-pro-diagnosis' : 'pro-rescue-plan'),
+        pointsDelta: -1,
+        pointsBalance,
+        resultId: options.resultId || null,
+      }),
     ], transaction);
 
     const nextPlantsScanned = options.recordScan ? toNumber(existing?.plantsScanned) + 1 : undefined;
@@ -299,8 +351,9 @@ export const consumeProPoint = async (user: AuthenticatedUser, options: { record
       billing: {
         channel: 'scan-point' as const,
         usedScanPoint: true,
-        scanPointsRemaining: scanPoints - 1,
+        scanPointsRemaining: pointsBalance,
         recordedScan: options.recordScan === true,
+        resultId: options.resultId || null,
         ...(typeof nextPlantsScanned === 'number' ? { plantsScanned: nextPlantsScanned } : {}),
       },
       refund: async () => {
@@ -309,6 +362,13 @@ export const consumeProPoint = async (user: AuthenticatedUser, options: { record
             buildIncrementWrite(userPath, {
               scanPoints: 1,
               ...(options.recordScan ? { plantsScanned: -1 } : {}),
+            }),
+            buildPointLedgerWrite(user, {
+              type: 'refund',
+              reason: 'model-error-refund',
+              pointsDelta: 1,
+              pointsBalance: scanPoints,
+              resultId: options.resultId || null,
             }),
           ]);
         } catch (error) {
@@ -386,6 +446,17 @@ export const creditScanPointsForPayment = async (
         status: 'credited',
         createdAt: new Date(),
       }, { exists: false }),
+      buildPointLedgerWrite(user, {
+        type: 'credit',
+        reason: 'paypal-purchase',
+        pointsDelta: payment.points,
+        pointsBalance: currentPoints + payment.points,
+        orderId: payment.orderId,
+        captureId: payment.captureId || null,
+        tierId: payment.tierId,
+        amount: payment.amount,
+        currency: payment.currency,
+      }),
     ], transaction);
 
     return { alreadyCredited: false };

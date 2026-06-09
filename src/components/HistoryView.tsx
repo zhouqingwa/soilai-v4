@@ -7,7 +7,30 @@ import Markdown from 'react-markdown';
 import { MarkdownResult } from './MarkdownResult';
 import ParticleImage from './ParticleImage';
 
+const getBillingBadge = (scan: any) => {
+  if (scan?.usedScanPoint || scan?.billing?.usedScanPoint || scan?.pro) {
+    return {
+      label: scan?.fullProDiagnosis || scan?.billing?.fullProDiagnosis ? 'Full Pro' : 'Pro',
+      className: 'bg-forest-deep text-white border-forest-deep/20',
+    };
+  }
+
+  if (scan?.usedFreeScan || scan?.billing?.usedFreeScan || scan?.billing?.channel === 'free-basic') {
+    return {
+      label: 'Free Basic',
+      className: 'bg-emerald-50 text-emerald-900 border-emerald-900/10',
+    };
+  }
+
+  return {
+    label: 'Basic',
+    className: 'bg-white/85 text-forest-deep border-forest-deep/10',
+  };
+};
+
 function HistoryCard({ scan, onClick, getRiskIcon, getRiskColor }: any) {
+  const billingBadge = getBillingBadge(scan);
+
   return (
     <motion.div
       layoutId={scan.id}
@@ -33,6 +56,9 @@ function HistoryCard({ scan, onClick, getRiskIcon, getRiskColor }: any) {
         )}
         <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-forest-deep shadow-sm">
           {scan.createdAt ? new Date(scan.createdAt.seconds ? scan.createdAt.seconds * 1000 : scan.createdAt).toLocaleDateString() : 'Recent'}
+        </div>
+        <div className={`absolute top-4 left-4 rounded-full border px-3 py-1 text-[9px] font-bold uppercase tracking-[0.16em] shadow-sm backdrop-blur-md ${billingBadge.className}`}>
+          {billingBadge.label}
         </div>
       </div>
       <div className="p-4 bg-white border-t border-forest-deep/5 flex items-center justify-between">
@@ -304,15 +330,26 @@ export default function HistoryView({ user, onShare, scans = [], isLoading = fal
                 ) : null}
 
                 <div className="p-8 md:p-10">
-                  <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] mb-6 border ${getRiskColor(selectedScan.risk)}`}>
-                    {getRiskIcon(selectedScan.risk)}
-                    Risk: {selectedScan.risk}
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] border ${getRiskColor(selectedScan.basic?.risk || selectedScan.risk || 'N/A')}`}>
+                      {getRiskIcon(selectedScan.basic?.risk || selectedScan.risk || 'N/A')}
+                      Risk: {selectedScan.basic?.risk || selectedScan.risk || 'N/A'}
+                    </div>
+                    {(() => {
+                      const billingBadge = getBillingBadge(selectedScan);
+                      return (
+                        <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-[0.2em] ${billingBadge.className}`}>
+                          {billingBadge.label}
+                          {(selectedScan.scanPointCost || selectedScan.billing?.usedScanPoint) ? <span className="opacity-70">- 1 point</span> : null}
+                        </div>
+                      );
+                    })()}
                   </div>
 
-                  <h2 className="text-3xl font-light text-forest-deep mb-2">{selectedScan.species}</h2>
-                  {selectedScan.killerTitle && (
+                  <h2 className="text-3xl font-light text-forest-deep mb-2">{selectedScan.basic?.species || selectedScan.species}</h2>
+                  {(selectedScan.basic?.killerTitle || selectedScan.killerTitle) && (
                     <div className="inline-block bg-forest-deep text-earth-sand px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded mb-6">
-                      {selectedScan.killerTitle}
+                      {selectedScan.basic?.killerTitle || selectedScan.killerTitle}
                     </div>
                   )}
                   <p className="text-xs text-stone-muted uppercase tracking-widest mb-8">
