@@ -254,22 +254,36 @@ export const analyzeFullProPlant = async ({ base64Data, mimeType, userQuestion }
   });
 
   const summary = basicResult?.basic?.summary || basicResult?.summary || '';
-  const proResult = await analyzePlant({
-    base64Data,
-    mimeType,
-    userQuestion,
-    basicSummary: summary,
-    isPro: true,
-  });
 
-  return {
-    ...basicResult,
-    pro: proResult?.pro,
-    billing: {
-      usedScanPoint: true,
-      mode: 'full-pro',
-    },
-  };
+  try {
+    const proResult = await analyzePlant({
+      base64Data,
+      mimeType,
+      userQuestion,
+      basicSummary: summary,
+      isPro: true,
+    });
+
+    return {
+      ...basicResult,
+      pro: proResult?.pro,
+      billing: {
+        usedScanPoint: true,
+        mode: 'full-pro',
+      },
+    };
+  } catch (proError) {
+    console.warn('Full Pro analysis: basic succeeded but Pro generation failed:', proError);
+    return {
+      ...basicResult,
+      pro: null,
+      proGenerationError: true,
+      billing: {
+        usedScanPoint: true,
+        mode: 'full-pro',
+      },
+    };
+  }
 };
 
 export const generateIllustration = async ({ species }: GenerateIllustrationInput) => {

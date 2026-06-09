@@ -77,6 +77,9 @@ export const getBearerToken = (context: RequestContext) => {
   return match?.[1];
 };
 
+const normalizePrivateKey = (key: string | undefined): string | undefined =>
+  key?.replace(/\\n/g, '\n');
+
 const parseServiceAccount = (): ServiceAccount | null => {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const rawBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
@@ -86,7 +89,7 @@ const parseServiceAccount = (): ServiceAccount | null => {
       const parsed = JSON.parse(rawJson) as ServiceAccount;
       return {
         ...parsed,
-        private_key: parsed.private_key?.replace(/\\n/g, '\n'),
+        private_key: normalizePrivateKey(parsed.private_key),
       };
     }
 
@@ -94,14 +97,14 @@ const parseServiceAccount = (): ServiceAccount | null => {
       const parsed = JSON.parse(Buffer.from(rawBase64, 'base64').toString('utf8')) as ServiceAccount;
       return {
         ...parsed,
-        private_key: parsed.private_key?.replace(/\\n/g, '\n'),
+        private_key: normalizePrivateKey(parsed.private_key),
       };
     }
 
     if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
       return {
         client_email: process.env.FIREBASE_CLIENT_EMAIL,
-        private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        private_key: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY) || '',
         project_id: process.env.FIREBASE_PROJECT_ID,
       };
     }

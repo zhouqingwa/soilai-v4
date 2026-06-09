@@ -64,5 +64,9 @@ export default defineConfig(({ mode }) => {
           ? { port: hmrPort }
           : true,
     },
+    test: {
+      include: ['server/__tests__/**/*.test.ts'],
+      environment: 'node',
+    },
   };
 });
