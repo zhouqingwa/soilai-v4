@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { lazy, Suspense, useState, useEffect, useRef, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Camera, Flower, Image as ImageIcon, User, Loader2, Copy, Check, Menu, X, ArrowUpRight, Search, Book, ShoppingBag, ChevronDown, Droplets, Sun, Thermometer, Sprout, Skull, Share2, Crown, Leaf, ArrowLeft, MoreHorizontal, Zap, AlertTriangle, RotateCcw } from 'lucide-react';
@@ -16,9 +16,8 @@ import { MobileNav } from './components/layout/MobileNav';
 import { DefaultPlantBackdrop } from './components/DefaultPlantBackdrop';
 import { DiagnosisTitle } from './components/DiagnosisTitle';
 import { RiskBadge } from './components/RiskBadge';
-import { auth, db, signInWithGoogle, logOut } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, getDocs, query, orderBy, getDocFromServer, limit, onSnapshot, where } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { updateDoc, increment, serverTimestamp, collection, getDocs, doc, setDoc, query, limit } from 'firebase/firestore';
 
 const LazyMarkdownResult = lazy(() => import('./components/MarkdownResult').then(module => ({ default: module.MarkdownResult })));
 const JournalView = lazy(() => import('./components/JournalView'));
@@ -44,34 +43,6 @@ const MarkdownResult = ({ content }: { content?: string }) => (
     <LazyMarkdownResult content={content || ''} />
   </Suspense>
 );
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMsg = error instanceof Error ? error.message : String(error);
@@ -114,36 +85,23 @@ const LeafCluster = ({ transform, scale = 1 }: { transform: string, scale?: numb
 );
 
 import { compressImage, compressFile } from './utils/image';
+import { useAuth } from './hooks/useAuth';
+import { useGarden } from './hooks/useGarden';
+import type {
+  AnalyzeMode,
+  LoadingContext,
+  AnalysisErrorCopy,
+  ScanBilling,
+  ScanResult,
+  UserProfile,
+  PhotoStatusInfo,
+  FirestoreErrorInfo,
+} from './types';
+import { OperationType } from './types';
 
 // Replace this with your actual Amazon Associates Store ID (e.g., 'mywebsite-20')
 const AMAZON_AFFILIATE_TAG = import.meta.env.VITE_AMAZON_AFFILIATE_TAG || 'YOUR_AMAZON_AFFILIATE_TAG';
 const FREE_BASIC_DAILY_LIMIT = 1;
-
-type AnalyzeMode = 'free-basic' | 'full-pro';
-type LoadingContext = 'analysis' | 'sample' | 'care-guide' | null;
-type AnalysisErrorCopy = {
-  title: string;
-  message: string;
-  help?: string;
-};
-
-type ScanBilling = {
-  channel?: 'free-basic' | 'scan-point';
-  usedFreeScan?: boolean;
-  usedScanPoint?: boolean;
-  actor?: 'guest' | 'user';
-  dailyLimit?: number;
-  dailyScansUsed?: number;
-  remainingFreeScans?: number;
-  lastScanDate?: string;
-  scanPointsRemaining?: number;
-  recordedScan?: boolean;
-  plantsScanned?: number;
-  alreadyUnlocked?: boolean;
-  proUnlocked?: boolean;
-  fullProDiagnosis?: boolean;
-  resultId?: string | null;
-};
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
@@ -366,11 +324,8 @@ export default function App() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const activeRequestRef = useRef<number | null>(null);
   const activeAbortRef = useRef<AbortController | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [gardenScans, setGardenScans] = useState<any[]>([]);
-  const [isGardenLoading, setIsGardenLoading] = useState(true);
-  const [gardenLoadError, setGardenLoadError] = useState(false);
+  const { user, userProfile, setUserProfile, signInWithGoogle, logOut } = useAuth();
+  const { gardenScans, isGardenLoading, gardenLoadError } = useGarden(user);
   const [pendingScan, setPendingScan] = useState<any>(null);
   const [analysisError, setAnalysisError] = useState<AnalysisErrorCopy | null>(null);
   const [isUnlockingPro, setIsUnlockingPro] = useState(false);
@@ -388,117 +343,6 @@ export default function App() {
   });
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [showPaidScanModal, setShowPaidScanModal] = useState(false);
-
-  useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        // Silently ignore offline errors during connection test
-      }
-    }
-    testConnection();
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      setGardenScans([]);
-      setIsGardenLoading(false);
-      return;
-    }
-
-    // Set up a real-time listener for the user's garden scans
-    const q = query(
-      collection(db, 'scans'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribeScans = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setGardenScans(data);
-      setIsGardenLoading(false);
-      setGardenLoadError(false);
-    }, (error: any) => {
-      if (error.message?.includes('Quota') || error.message?.includes('quota') || error.code === 'resource-exhausted') {
-        console.warn("Quota exceeded for garden scans. Using local cache if available.");
-        // Don't set fatal error right away for quota, let the local cache serve
-        setIsGardenLoading(false);
-        setGardenLoadError(prev => prev); // Leave as is, hopefully cache loaded
-      } else {
-        console.error("Error listening to garden scans:", error);
-        setGardenLoadError(true);
-        setIsGardenLoading(false);
-      }
-    });
-
-    return () => unsubscribeScans();
-  }, [user]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        try {
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const data = userSnap.data();
-            setUserProfile(data);
-          } else {
-            const newProfile: any = {
-              email: currentUser.email,
-              role: 'user',
-              plantsScanned: 0,
-              plantsSaved: 0,
-              dailyScans: 0,
-              lastScanDate: new Date().toISOString().split('T')[0],
-              createdAt: serverTimestamp()
-            };
-            if (currentUser.displayName) newProfile.name = currentUser.displayName;
-            if (currentUser.photoURL) newProfile.photoUrl = currentUser.photoURL;
-
-            try {
-              await setDoc(userRef, newProfile);
-              setUserProfile(newProfile);
-            } catch (error: any) {
-              if (error.message?.includes('offline')) {
-                console.warn("Firestore is offline, profile creation deferred.");
-              } else if (error.message?.includes('Quota limit exceeded')) {
-                console.warn("Quota exceeded, defaulting to local profile...");
-                setUserProfile(newProfile);
-              } else {
-                try {
-                  handleFirestoreError(error, OperationType.CREATE, `users/${currentUser.uid}`);
-                } catch(e) { console.error(e) }
-              }
-            }
-          }
-        } catch (error: any) {
-          if (error.message?.includes('offline')) {
-            console.warn("Firestore is offline, profile fetch deferred.");
-          } else if (error.message?.includes('Quota limit exceeded')) {
-             console.warn("Quota exceeded, defaulting to fallback profile...");
-             setUserProfile({
-               email: currentUser.email,
-               role: 'user',
-               plantsScanned: 0,
-               plantsSaved: 0,
-               dailyScans: 0,
-               lastScanDate: new Date().toISOString().split('T')[0]
-             });
-          } else {
-            try {
-              handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
-            } catch(e) { console.error(e) }
-          }
-        }
-      } else {
-        setUserProfile(null);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (isProfileOpen) {
